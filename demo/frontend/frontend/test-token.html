@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Token</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .success { color: green; }
+        .error { color: red; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Token & API Test</h1>
+    
+    <div id="token-info">
+        <h2>Token Information</h2>
+        <pre id="token-display"></pre>
+        <pre id="user-display"></pre>
+    </div>
+
+    <div>
+        <h2>API Tests</h2>
+        <button onclick="testVideoList()">Test /api/videos/list</button>
+        <button onclick="testVideoById()">Test /api/videos/:id</button>
+        <button onclick="clearStorage()">Clear Storage & Reload</button>
+    </div>
+
+    <div id="results" style="margin-top: 20px;">
+        <h2>Results:</h2>
+        <pre id="output"></pre>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+        
+        // Display token info
+        function displayTokenInfo() {
+            const token = localStorage.getItem('token');
+            const user = localStorage.getItem('user');
+            
+            document.getElementById('token-display').innerHTML = 
+                token ? `✅ Token: ${token.substring(0, 50)}...` : '❌ No Token Found';
+            
+            document.getElementById('user-display').innerHTML = 
+                user ? `User: ${user}` : '❌ No User Info';
+        }
+
+        async function testVideoList() {
+            const output = document.getElementById('output');
+            output.innerHTML = 'Testing /api/videos/list...\n\n';
+            
+            const token = localStorage.getItem('token');
+            if (!token) {
+                output.innerHTML += '❌ ERROR: No token in localStorage\n';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/videos/list`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                output.innerHTML += `Status: ${response.status} ${response.statusText}\n\n`;
+
+                const data = await response.json();
+                output.innerHTML += `Response:\n${JSON.stringify(data, null, 2)}`;
+
+                if (response.status === 200) {
+                    output.innerHTML = '<span class="success">✅ SUCCESS!</span>\n\n' + output.innerHTML;
+                } else {
+                    output.innerHTML = '<span class="error">❌ FAILED!</span>\n\n' + output.innerHTML;
+                }
+            } catch (error) {
+                output.innerHTML += `\n<span class="error">ERROR: ${error.message}</span>`;
+            }
+        }
+
+        async function testVideoById() {
+            const output = document.getElementById('output');
+            const videoId = prompt('Enter Video ID (MongoDB _id):');
+            
+            if (!videoId) return;
+
+            output.innerHTML = `Testing /api/videos/${videoId}...\n\n`;
+            
+            const token = localStorage.getItem('token');
+            if (!token) {
+                output.innerHTML += '❌ ERROR: No token in localStorage\n';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/videos/${videoId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                output.innerHTML += `Status: ${response.status} ${response.statusText}\n\n`;
+
+                const data = await response.json();
+                output.innerHTML += `Response:\n${JSON.stringify(data, null, 2)}`;
+
+                if (response.status === 200) {
+                    output.innerHTML = '<span class="success">✅ SUCCESS!</span>\n\n' + output.innerHTML;
+                } else {
+                    output.innerHTML = '<span class="error">❌ FAILED!</span>\n\n' + output.innerHTML;
+                }
+            } catch (error) {
+                output.innerHTML += `\n<span class="error">ERROR: ${error.message}</span>`;
+            }
+        }
+
+        function clearStorage() {
+            localStorage.clear();
+            alert('Storage cleared!');
+            location.reload();
+        }
+
+        // Initialize
+        displayTokenInfo();
+    </script>
+</body>
+</html>

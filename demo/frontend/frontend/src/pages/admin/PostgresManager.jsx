@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import { 
-  Database, ArrowLeft, ChevronRight, Table, Edit3, Save, X, FileVideo, Server, Search 
+  Database, ArrowLeft, ChevronRight, Table, Edit3, Save, X, FileVideo, Server, Search, Trash2, AlertCircle 
 } from "lucide-react";
 
 // --- CẤU HÌNH KHÓA CHÍNH ---
@@ -34,6 +34,9 @@ const PostgresManager = () => {
   const [editingData, setEditingData] = useState({}); 
   const [originalId, setOriginalId] = useState(null);    
   const [currentIdField, setCurrentIdField] = useState(""); 
+  
+  // Delete State
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const getFileNameFromUrl = (url) => { if(!url) return "Unknown"; try { return decodeURIComponent(url.split('/').pop()); } catch { return url; } };
 
@@ -46,15 +49,19 @@ const PostgresManager = () => {
     return false;
   };
 
-  useEffect(() => { fetchVideos(); }, []);
-
   const fetchVideos = async () => {
     setLoading(true);
     try {
-        const res = await axiosClient.get("/videos/list");
+        const url = showDeleted ? "/videos/list?show_deleted=true" : "/videos/list";
+        const res = await axiosClient.get(url);
         if (res.data?.success) setVideos(res.data.data || []);
     } catch(e) { console.error(e); } finally { setLoading(false); }
   };
+
+  useEffect(() => { 
+    fetchVideos(); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDeleted]);
 
   const handleSelectVideo = async (video) => {
     setLoading(true);
@@ -116,6 +123,55 @@ const PostgresManager = () => {
     } catch { alert("❌ Server Error"); }
   };
 
+  const handleSoftDelete = async (video, e) => {
+    e.stopPropagation();
+    
+    if (!window.confirm(`⚠️ Bạn có chắc muốn xóa video "${video.clip_name || 'Untitled'}"?\n\n` +
+      "Video sẽ được đánh dấu là đã xóa (soft delete) trong MongoDB, PostgreSQL và Neo4j.\n" +
+      "Bạn có thể xem lại trong mục 'Video đã xóa'.")) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await axiosClient.post(`/videos/${video._id}/soft-delete`);
+      if (res.data?.success) {
+        alert("✅ Đã xóa video thành công!");
+        await fetchVideos();
+      } else {
+        alert("⚠️ " + res.data.message);
+      }
+    } catch (error) {
+      alert("❌ Lỗi khi xóa video: " + (error.response?.data?.message || error.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestore = async (video, e) => {
+    e.stopPropagation();
+    
+    if (!window.confirm(`✅ Bạn có chắc muốn khôi phục video "${video.clip_name || 'Untitled'}"?\n\n` +
+      "Video sẽ được khôi phục trong MongoDB, PostgreSQL và Neo4j.")) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await axiosClient.post(`/videos/${video._id}/restore`);
+      if (res.data?.success) {
+        alert("✅ Đã khôi phục video thành công!");
+        await fetchVideos();
+      } else {
+        alert("⚠️ " + res.data.message);
+      }
+    } catch (error) {
+      alert("❌ Lỗi khi khôi phục video: " + (error.response?.data?.message || error.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderInput = (key, value) => {
       const isLocked = isReadOnlyField(key);
       const valType = typeof value;
@@ -168,7 +224,20 @@ const PostgresManager = () => {
        {step === 1 && (
           <div className="bg-white rounded-xl shadow border overflow-hidden">
              <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                 <span className="font-bold text-gray-700">Danh sách Video ({filteredVideos.length})</span>
+                 <div className="flex gap-3 items-center">
+                   <span className="font-bold text-gray-700">Danh sách Video ({filteredVideos.length})</span>
+                   <button
+                     onClick={() => setShowDeleted(!showDeleted)}
+                     className={`px-3 py-1 text-xs font-medium rounded-lg transition flex items-center gap-1 ${
+                       showDeleted 
+                         ? 'bg-red-100 text-red-700 border border-red-300' 
+                         : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
+                     }`}
+                   >
+                     <AlertCircle size={14} />
+                     {showDeleted ? 'Tất cả Video' : 'Video đã xóa'}
+                   </button>
+                 </div>
                  <div className="relative w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                     <input 
@@ -182,21 +251,45 @@ const PostgresManager = () => {
              </div>
 
              <table className="w-full text-left">
-                <thead className="bg-white border-b text-gray-500 text-xs uppercase"><tr><th className="p-4">ID</th><th className="p-4">Tên Clip</th><th className="p-4">Action</th></tr></thead>
+                <thead className="bg-white border-b text-gray-500 text-xs uppercase"><tr><th className="p-4">ID</th><th className="p-4">Tên Clip</th><th className="p-4">Hành động</th><th className="p-4"></th></tr></thead>
                 <tbody>
                    {filteredVideos.length > 0 ? (
                        filteredVideos.map(v => (
-                          <tr key={v._id} onClick={() => handleSelectVideo(v)} className="hover:bg-blue-50 cursor-pointer border-b last:border-0 transition">
+                          <tr key={v._id} className="hover:bg-blue-50 border-b last:border-0 transition">
                              <td className="p-4 text-blue-600 font-mono font-bold text-sm">{v._id}</td>
-                             <td className="p-4 flex gap-2 items-center text-sm">
-                                 <FileVideo size={16} className="text-gray-400"/>
-                                 {v.clip_name || getFileNameFromUrl(v.minio_url)}
+                             <td className="p-4">
+                                 <div className="flex gap-2 items-center text-sm">
+                                   <FileVideo size={16} className="text-gray-400"/>
+                                   {v.clip_name || getFileNameFromUrl(v.minio_url)}
+                                   {v.is_deleted && (
+                                     <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                                       <AlertCircle size={12} /> Đã xóa
+                                     </span>
+                                   )}
+                                 </div>
                              </td>
-                             <td className="p-4"><ChevronRight size={18} className="text-gray-400"/></td>
+                             <td className="p-4">
+                               {showDeleted ? (
+                                 <button
+                                   onClick={(e) => handleRestore(v, e)}
+                                   className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 border border-green-200 rounded hover:bg-green-600 hover:text-white transition"
+                                 >
+                                   <Save size={14}/> Khôi phục
+                                 </button>
+                               ) : (
+                                 <button
+                                   onClick={(e) => handleSoftDelete(v, e)}
+                                   className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-600 hover:text-white transition"
+                                 >
+                                   <Trash2 size={14}/> Xóa
+                                 </button>
+                               )}
+                             </td>
+                             <td className="p-4 cursor-pointer" onClick={() => handleSelectVideo(v)}><ChevronRight size={18} className="text-gray-400"/></td>
                           </tr>
                        ))
                    ) : (
-                       <tr><td colSpan="3" className="p-8 text-center text-gray-400">Không tìm thấy video nào.</td></tr>
+                       <tr><td colSpan="4" className="p-8 text-center text-gray-400">{showDeleted ? "Không có video nào đã xóa." : "Không tìm thấy video nào."}</td></tr>
                    )}
                 </tbody>
              </table>

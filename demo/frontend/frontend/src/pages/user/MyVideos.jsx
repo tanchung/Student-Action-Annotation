@@ -6,11 +6,11 @@ import {
   Loader, ChevronDown, X, Sparkles, ChevronLeft, ChevronRight
 } from "lucide-react";
 import Footer from "../../components/Footer";
+import Header from "../../components/Header";
 import axiosClient from "../../api/axiosClient";
 
 const MyVideos = () => {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
   
   const [videos, setVideos] = useState([]);
   const [filteredVideos, setFilteredVideos] = useState([]);
@@ -101,7 +101,7 @@ const MyVideos = () => {
     
     try {
       // TODO: Gọi API để chạy AI analysis
-      // await axiosClient.post(`/videos/${videoId}/analyze`);
+      await axiosClient.post(`/videos/${videoId}/analyze`);
       alert("✨ Đang gửi video để AI phân tích! Vui lòng đợi vài phút.");
       // Cập nhật status thành processing
       fetchVideos();
@@ -167,40 +167,11 @@ const MyVideos = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-gray-800 font-sans flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 text-gray-800 font-sans flex flex-col">
       
-      {/* HEADER */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-20">
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 font-black text-xl tracking-tight cursor-pointer" onClick={() => navigate("/home")}>
-            <div className="bg-indigo-600 text-white p-1 rounded">
-              <Video size={18} />
-            </div>
-            ANNOTATION.IO
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => navigate("/dashboard")}
-              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition"
-            >
-              Dashboard
-            </button>
-            <button 
-              onClick={() => navigate("/tutorials")}
-              className="hidden sm:block px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition"
-            >
-              Tutorials
-            </button>
-            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm border border-indigo-200">
-              {user.username ? user.username[0].toUpperCase() : "U"}
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header activePage="my-videos" />
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto p-6 md:p-8">
+      <main className="flex-1 max-w-[1400px] w-full mx-auto p-6 md:p-8 pt-28">
         
         {/* Page Header */}
         <div className="mb-8">
@@ -630,7 +601,7 @@ const MyVideos = () => {
 
       </main>
 
-      <Footer />
+      
     </div>
   );
 };

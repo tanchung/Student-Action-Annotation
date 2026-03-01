@@ -7,6 +7,7 @@ import {
   FileSpreadsheet, Users, MessageSquare, Phone, Moon, ArrowRight,
   Zap, Target, Award
 } from "lucide-react";
+import Header from "../../components/Header";
 
 const TutorialsPage = () => {
   const navigate = useNavigate();
@@ -27,36 +28,10 @@ const TutorialsPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/home")}
-              className="flex items-center gap-2 font-black text-xl tracking-tight hover:text-indigo-600 transition"
-            >
-              <div className="bg-indigo-600 text-white p-1.5 rounded-lg">
-                <Video size={20} />
-              </div>
-              ANNOTATION.IO
-            </button>
-            <span className="text-gray-300">|</span>
-            <div className="flex items-center gap-2 text-gray-600">
-              <BookOpen size={20} />
-              <span className="font-semibold">Tutorials & Documentation</span>
-            </div>
-          </div>
-          
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
-          >
-            Back to Dashboard
-          </button>
-        </div>
-      </header>
+      
+      <Header activePage="tutorials" />
 
-      <div className="max-w-[1400px] mx-auto flex gap-8 p-8">
+      <div className="max-w-[1400px] mx-auto flex gap-8 p-8 pt-28">
         {/* Sidebar Navigation */}
         <aside className="w-64 flex-shrink-0 sticky top-24 h-fit">
           <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
@@ -609,21 +584,6 @@ const TutorialsPage = () => {
             </div>
           </section>
 
-          {/* Call to Action */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-10 text-center text-white shadow-xl">
-            <h2 className="text-3xl font-black mb-4">Sẵn sàng bắt đầu?</h2>
-            <p className="text-xl text-indigo-100 mb-8 max-w-2xl mx-auto">
-              Hãy thử upload video lớp học đầu tiên và trải nghiệm sức mạnh của AI!
-            </p>
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="px-8 py-4 bg-white text-indigo-600 rounded-xl font-bold text-lg hover:shadow-2xl hover:scale-105 transition inline-flex items-center gap-3"
-            >
-              <Upload size={24} />
-              Upload Video Ngay
-              <ArrowRight size={20} />
-            </button>
-          </div>
         </main>
       </div>
     </div>

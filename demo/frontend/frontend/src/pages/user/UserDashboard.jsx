@@ -5,6 +5,7 @@ import {
   PlayCircle, CheckCircle2, AlertCircle, FileText, X, Loader
 } from "lucide-react";
 import Footer from "../../components/Footer";
+import Header from "../../components/Header";
 import axiosClient from "../../api/axiosClient"; 
 
 const UserDashboard = () => {
@@ -133,35 +134,11 @@ const UserDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-gray-800 font-sans flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 text-gray-800 font-sans flex flex-col">
       
-      <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-2 font-black text-xl tracking-tight cursor-pointer" onClick={() => navigate("/home")}>
-          <div className="bg-indigo-600 text-white p-1 rounded">
-             <Video size={18} />
-          </div>
-          ANNOTATION.IO
-        </div>
-        
-        <div className="hidden md:flex items-center bg-gray-100 px-3 py-2 rounded-lg w-96 border border-transparent focus-within:border-indigo-300 focus-within:bg-white transition-all">
-           <Search size={18} className="text-gray-400 mr-2"/>
-           <input type="text" placeholder="Search your videos..." className="bg-transparent outline-none text-sm w-full"/>
-        </div>
+      <Header activePage="dashboard" />
 
-        <div className="flex items-center gap-3">
-           <button 
-             onClick={() => navigate("/tutorials")}
-             className="hidden sm:block px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition"
-           >
-             Documentation
-           </button>
-           <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm border border-indigo-200">
-             {user.username ? user.username[0].toUpperCase() : "U"}
-           </div>
-        </div>
-      </header>
-
-      <main className="max-w-[1400px] mx-auto p-6 md:p-8 flex-1 w-full">
+      <main className="max-w-[1400px] mx-auto p-6 md:p-8 pt-28 flex-1 w-full">
         
         <div className="mb-10">
            <h1 className="text-2xl font-bold text-gray-900 mb-6">Welcome back, {user.full_name || "Guest"}! 👋</h1>
@@ -390,7 +367,7 @@ const UserDashboard = () => {
         </div>
       )}
 
-      <Footer />
+      
     </div>
   );
 };

@@ -24,11 +24,25 @@ const RELATED_COLLECTIONS = [
 exports.getListVideos = async (req, res) => {
     try {
         const { role, id } = req.user || {};
+        const { show_deleted } = req.query; // Thêm query param để xem video đã xóa
+        
         let filter = {};
 
         // Nếu user thường -> chỉ thấy video mình up
         if (role !== 'admin' && id) {
             filter.uploader_id = id;
+        }
+
+        // Lọc theo trạng thái deleted
+        if (show_deleted === 'true') {
+            // Chỉ lấy video đã bị xóa (soft deleted)
+            filter.is_deleted = true;
+        } else {
+            // Mặc định: chỉ lấy video chưa bị xóa
+            filter.$or = [
+                { is_deleted: { $exists: false } },
+                { is_deleted: false }
+            ];
         }
 
         // Lấy các trường cần thiết cho Dashboard
@@ -40,6 +54,8 @@ exports.getListVideos = async (req, res) => {
             thumbnail_url: 1, 
             status: 1,       
             created_at: 1,
+            is_deleted: 1,
+            deleted_at: 1,
             _id: 1 
         }).sort({ created_at: -1 });
         
@@ -598,6 +614,248 @@ exports.deleteVideo = async (req, res) => {
         res.status(500).json({ 
             success: false, 
             message: "Lỗi server khi xóa video" 
+        });
+    }
+};
+
+// ==========================================
+// SOFT DELETE VIDEO (Admin Only)
+// ==========================================
+exports.softDeleteVideo = async (req, res) => {
+    const { video_id } = req.params;
+
+    try {
+        // 1. Tìm video trong MongoDB
+        let query = {};
+        if (ObjectId.isValid(video_id)) {
+            query = { _id: new ObjectId(video_id) };
+        } else {
+            query = { video_id: video_id };
+        }
+
+        const video = await Video.findOne(query);
+        
+        if (!video) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "Không tìm thấy video" 
+            });
+        }
+
+        // 2. Soft delete trong MongoDB (đánh dấu is_deleted = true)
+        await Video.updateOne(
+            { _id: video._id },
+            { 
+                $set: { 
+                    is_deleted: true,
+                    deleted_at: new Date()
+                } 
+            }
+        );
+
+        // 3. Soft delete trong các collection liên quan (environment, segment, person, etc.)
+        const videoIdStr = video._id.toString();
+        for (const collectionName of RELATED_COLLECTIONS) {
+            const db = mongoose.connection.db;
+            await db.collection(collectionName).updateMany(
+                { video_id: videoIdStr },
+                { 
+                    $set: { 
+                        is_deleted: true,
+                        deleted_at: new Date()
+                    } 
+                }
+            );
+        }
+
+        // 4. Soft delete trong PostgreSQL
+        try {
+            const pgClient = await pgPool.connect();
+            try {
+                // Update video_metadata table
+                await pgClient.query(
+                    'UPDATE video_metadata SET is_deleted = true, deleted_at = NOW() WHERE video_id = $1',
+                    [videoIdStr]
+                );
+
+                // Update video_segments table
+                await pgClient.query(
+                    'UPDATE video_segments SET is_deleted = true, deleted_at = NOW() WHERE video_id = $1',
+                    [videoIdStr]
+                );
+
+                // Update activities table
+                await pgClient.query(
+                    'UPDATE activities SET is_deleted = true, deleted_at = NOW() WHERE video_id = $1',
+                    [videoIdStr]
+                );
+
+                console.log('✅ Soft deleted in PostgreSQL');
+            } finally {
+                pgClient.release();
+            }
+        } catch (pgError) {
+            console.warn('⚠️ PostgreSQL soft delete warning:', pgError.message);
+        }
+
+        // 5. Soft delete trong Neo4j
+        try {
+            const neo4jSession = neo4jDriver.session();
+            try {
+                // Set is_deleted = true cho tất cả nodes liên quan đến video
+                await neo4jSession.run(`
+                    MATCH (n)
+                    WHERE n.video_id = $videoId
+                    SET n.is_deleted = true, n.deleted_at = datetime()
+                `, { videoId: videoIdStr });
+
+                // Set is_deleted = true cho tất cả relationships
+                await neo4jSession.run(`
+                    MATCH ()-[r]-()
+                    WHERE r.video_id = $videoId
+                    SET r.is_deleted = true, r.deleted_at = datetime()
+                `, { videoId: videoIdStr });
+
+                console.log('✅ Soft deleted in Neo4j');
+            } finally {
+                await neo4jSession.close();
+            }
+        } catch (neo4jError) {
+            console.warn('⚠️ Neo4j soft delete warning:', neo4jError.message);
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            message: "Đã đánh dấu xóa video và các dữ liệu liên quan trong MongoDB, PostgreSQL và Neo4j" 
+        });
+
+    } catch (error) {
+        console.error("Soft Delete Video Error:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "Lỗi server khi soft delete video: " + error.message 
+        });
+    }
+};
+
+// ==========================================
+// RESTORE SOFT-DELETED VIDEO (Admin Only)
+// ==========================================
+exports.restoreVideo = async (req, res) => {
+    const { video_id } = req.params;
+
+    try {
+        // 1. Tìm video trong MongoDB
+        let query = {};
+        if (ObjectId.isValid(video_id)) {
+            query = { _id: new ObjectId(video_id) };
+        } else {
+            query = { video_id: video_id };
+        }
+
+        const video = await Video.findOne(query);
+        
+        if (!video) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "Không tìm thấy video" 
+            });
+        }
+
+        // 2. Restore trong MongoDB (is_deleted = false, deleted_at = null)
+        await Video.updateOne(
+            { _id: video._id },
+            { 
+                $set: { 
+                    is_deleted: false,
+                    deleted_at: null
+                } 
+            }
+        );
+
+        // 3. Restore trong các collection liên quan
+        const videoIdStr = video._id.toString();
+        for (const collectionName of RELATED_COLLECTIONS) {
+            const db = mongoose.connection.db;
+            await db.collection(collectionName).updateMany(
+                { video_id: videoIdStr },
+                { 
+                    $set: { 
+                        is_deleted: false,
+                        deleted_at: null
+                    } 
+                }
+            );
+        }
+
+        // 4. Restore trong PostgreSQL
+        try {
+            const pgClient = await pgPool.connect();
+            try {
+                // Restore video_metadata table
+                await pgClient.query(
+                    'UPDATE video_metadata SET is_deleted = false, deleted_at = NULL WHERE video_id = $1',
+                    [videoIdStr]
+                );
+
+                // Restore video_segments table
+                await pgClient.query(
+                    'UPDATE video_segments SET is_deleted = false, deleted_at = NULL WHERE video_id = $1',
+                    [videoIdStr]
+                );
+
+                // Restore activities table
+                await pgClient.query(
+                    'UPDATE activities SET is_deleted = false, deleted_at = NULL WHERE video_id = $1',
+                    [videoIdStr]
+                );
+
+                console.log('✅ Restored in PostgreSQL');
+            } finally {
+                pgClient.release();
+            }
+        } catch (pgError) {
+            console.warn('⚠️ PostgreSQL restore warning:', pgError.message);
+        }
+
+        // 5. Restore trong Neo4j
+        try {
+            const neo4jSession = neo4jDriver.session();
+            try {
+                // Set is_deleted = false và xóa deleted_at cho tất cả nodes
+                await neo4jSession.run(`
+                    MATCH (n)
+                    WHERE n.video_id = $videoId
+                    SET n.is_deleted = false
+                    REMOVE n.deleted_at
+                `, { videoId: videoIdStr });
+
+                // Set is_deleted = false và xóa deleted_at cho tất cả relationships
+                await neo4jSession.run(`
+                    MATCH ()-[r]-()
+                    WHERE r.video_id = $videoId
+                    SET r.is_deleted = false
+                    REMOVE r.deleted_at
+                `, { videoId: videoIdStr });
+
+                console.log('✅ Restored in Neo4j');
+            } finally {
+                await neo4jSession.close();
+            }
+        } catch (neo4jError) {
+            console.warn('⚠️ Neo4j restore warning:', neo4jError.message);
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            message: "Đã khôi phục video và các dữ liệu liên quan trong MongoDB, PostgreSQL và Neo4j" 
+        });
+
+    } catch (error) {
+        console.error("Restore Video Error:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "Lỗi server khi khôi phục video: " + error.message 
         });
     }
 };

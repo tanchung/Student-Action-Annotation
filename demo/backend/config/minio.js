@@ -1,14 +1,14 @@
 const Minio = require("minio");
 
 const minioClient = new Minio.Client({
-  endPoint: "localhost",
-  port: 9000,
-  useSSL: false,
-  accessKey: "minioadmin",
-  secretKey: "minioadmin",
+  endPoint: process.env.MINIO_ENDPOINT || "localhost",
+  port: parseInt(process.env.MINIO_PORT) || 9000,
+  useSSL: process.env.MINIO_USE_SSL === 'true',
+  accessKey: process.env.MINIO_ACCESS_KEY || "minioadmin",
+  secretKey: process.env.MINIO_SECRET_KEY || "minioadmin",
 });
 
-const BUCKET_NAME = "classroom";
+const BUCKET_NAME = process.env.MINIO_BUCKET || "classroom";
 
 async function initBucket() {
   try {

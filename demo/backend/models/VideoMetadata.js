@@ -11,7 +11,9 @@ const VideoSchema = new mongoose.Schema({
   embedding: { type: [Number], default: [] },
   status: { type: String, default: 'uploaded' },
   thumbnail_url: { type: String, default: null },
-  error_message: { type: String, default: null }
+  error_message: { type: String, default: null },
+  is_deleted: { type: Boolean, default: false },
+  deleted_at: { type: Date, default: null }
 }, { collection: 'video' });
 
 module.exports = mongoose.model('Video', VideoSchema);

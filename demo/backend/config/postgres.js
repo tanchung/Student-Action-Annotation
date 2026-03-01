@@ -1,12 +1,11 @@
-// backend/config/postgres.js
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'classroom_pg', // Tên database bạn đã tạo ở bước Python
-  password: '12345',            // Thay bằng mật khẩu PostgreSQL của bạn
-  port: 5432,
+  host: process.env.PG_HOST || 'localhost',
+  port: process.env.PG_PORT || 5432,
+  database: process.env.PG_DATABASE || 'classroom_pg',
+  user: process.env.PG_USER || 'postgres',
+  password: process.env.PG_PASSWORD || '12345',
 });
 
 // Bắt lỗi kết nối

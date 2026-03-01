@@ -1,0 +1,5 @@
+# Ignore MinIO binary files (too large for Git)
+minio_files/
+
+# Keep JSON database dumps (text-based, Git-friendly)
+# These are small and essential for the project

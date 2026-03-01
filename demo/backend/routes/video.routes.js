@@ -25,14 +25,18 @@ router.post('/upload', verifyToken, upload.single('video'), uploadController.upl
 // ==========================================
 // Hiện tại để verifyToken để bảo mật cơ bản, ai có tk mới xem được
 router.get('/list', verifyToken, videoController.getListVideos);
+
+// ==========================================
+// SOFT DELETE ROUTE - Must be before all other /:video_id routes
+// ==========================================
+router.post('/:video_id/soft-delete', verifyToken, isAdmin, videoController.softDeleteVideo);
+router.post('/:video_id/restore', verifyToken, isAdmin, videoController.restoreVideo);
+
 // Các routes cụ thể phải đặt TRƯỚC route động /:video_id
 router.get('/:video_id/metadata', verifyToken, videoController.getVideoFullMetadata);
 router.get('/:video_id/full', verifyToken, videoController.getVideoFullMetadata);
 router.get('/:video_id/postgres', verifyToken, videoController.getVideoPostgresData);
 router.get('/:video_id/neo4j', verifyToken, videoController.getVideoGraphData);
-// Route động /:video_id phải đặt CUỐI CÙNG
-router.get('/:video_id', verifyToken, videoController.getVideoById);
-
 
 // ==========================================
 // 3. ROUTES ADMIN (Cập nhật dữ liệu)
@@ -46,5 +50,8 @@ router.put('/update-neo4j-rel', verifyToken, isAdmin, videoController.updateNeo4
 // 4. ROUTES XÓA VIDEO
 // ==========================================
 router.delete('/:video_id', verifyToken, videoController.deleteVideo);
+
+// Route động /:video_id phải đặt CUỐI CÙNG (catch-all)
+router.get('/:video_id', verifyToken, videoController.getVideoById);
 
 module.exports = router;

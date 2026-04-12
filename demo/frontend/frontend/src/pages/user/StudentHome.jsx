@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { 
-  Video, 
+  Image as ImageIcon, 
   ArrowRight, 
   UploadCloud, 
   Activity, 
@@ -44,7 +44,7 @@ const StudentHome = () => {
 
             {/* Subheadline */}
             <p className="text-lg md:text-xl text-gray-500 max-w-lg leading-relaxed font-medium">
-              Upload classroom videos, annotate student behaviors, and generate insightful analytics instantly. Free for students and researchers.
+              Upload classroom images, annotate student behaviors, and generate insightful analytics instantly.
             </p>
 
             {/* CTA Button (Pill Shape) */}
@@ -54,13 +54,13 @@ const StudentHome = () => {
                   if (!isLoggedIn) {
                     navigate("/login");
                   } else {
-                    navigate("/my-videos");
+                    navigate("/dashboard");
                   }
                 }}
                 className="group relative px-8 py-5 rounded-full bg-[#5D5CDE] text-white text-lg font-bold flex items-center gap-3 hover:bg-[#4b4ac0] transition-all shadow-xl shadow-indigo-200 hover:shadow-2xl hover:-translate-y-1"
               >
                 <UploadCloud size={24} />
-                <span>Upload Video to Analyze</span>
+                <span>Upload Image to Analyze</span>
                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
@@ -88,7 +88,7 @@ const StudentHome = () => {
                 {/* Fake UI Elements to look like the app */}
                 <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex gap-4 items-center">
                     <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                        <Video size={24} />
+                        <ImageIcon size={24} />
                     </div>
                     <div>
                         <div className="h-2 w-32 bg-white/40 rounded mb-2"></div>

@@ -1,239 +1,173 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Search, Download, Play, Pause, SkipBack, SkipForward } from "lucide-react";
+import { ArrowLeft, Download, ZoomIn, ZoomOut, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import axiosClient from "../../api/axiosClient";
 
 const AnnotationStudio = () => {
-  const { videoId } = useParams();
+  const { imageId } = useParams();
   const navigate = useNavigate();
-  const videoRef = useRef(null);
+  const imageContainerRef = useRef(null);
 
   // State
-  const [videoData, setVideoData] = useState(null);
-  const [captions, setCaptions] = useState([]);
+  const [imageData, setImageData] = useState(null);
+  const [metadata, setMetadata] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [activeCaption, setActiveCaption] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [showAnnotations, setShowAnnotations] = useState(true);
+  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
 
-  // Fetch video data
-  const fetchVideoData = useCallback(async () => {
-    try {
-      console.log("Fetching video data for ID:", videoId);
-      const res = await axiosClient.get(`/videos/${videoId}`);
-      console.log("Video data response:", res.data);
-      if (res.data.success) {
-        const videoInfo = res.data.result;
-        console.log("📹 Video URL (minio_url):", videoInfo.minio_url);
-        console.log("📊 Video status:", videoInfo.status);
-        console.log("📁 Full video data:", videoInfo);
-        setVideoData(videoInfo);
-        
-        // Check if video URL exists
-        if (!videoInfo.minio_url) {
-          console.warn("⚠️ Video has no minio_url!");
-          alert(`⚠️ Video chưa có URL!\n\nStatus: ${videoInfo.status}\nFile: ${videoInfo.file_name}\n\nVideo có thể đang được xử lý hoặc chưa upload thành công.`);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching video data:", error);
-      alert("Không thể tải thông tin video!");
-      navigate("/user/dashboard");
-    } finally {
-      setLoading(false);
-    }
-  }, [videoId, navigate]);
-
-  // Fetch captions
-  const fetchCaptions = useCallback(async () => {
-    try {
-      // Fetch captions from metadata (assuming captions are stored in metadata collection)
-      const res = await axiosClient.get(`/videos/${videoId}/metadata`);
-      console.log("📊 Metadata response:", res.data);
-      if (res.data.success && res.data.data) {
-        const metadata = res.data.data;
-        console.log("📊 Full metadata object:", metadata);
-        console.log("📊 Related data:", metadata.related_data);
-        
-        // Extract captions from related_data.caption first
-        const extractedCaptions = [];
-        
-        // Check if captions exist in related_data
-        if (metadata.related_data?.caption && Array.isArray(metadata.related_data.caption)) {
-          console.log("✅ Found captions in related_data.caption:", metadata.related_data.caption.length);
-          metadata.related_data.caption.forEach(cap => {
-            if (cap.caption_text) {
-              extractedCaptions.push({
-                time: cap.start_time || 0,
-                endTime: cap.end_time || (cap.start_time + 5),
-                text: cap.caption_text,
-                segmentId: cap.segment_id || cap._id
-              });
-            }
-          });
-        }
-        // Fallback: check segments array
-        else if (metadata.related_data?.segment && Array.isArray(metadata.related_data.segment)) {
-          console.log("⚠️ No caption collection, using segments:", metadata.related_data.segment.length);
-          metadata.related_data.segment.forEach(segment => {
-            console.log("Segment data:", segment);
-            if (segment.caption || segment.description) {
-              extractedCaptions.push({
-                time: segment.start_time || 0,
-                endTime: segment.end_time || (segment.start_time + 5),
-                text: segment.caption || segment.description || "No caption",
-                segmentId: segment.segment_id || segment._id
-              });
-            }
-          });
-        }
-        
-        // Sort by time
-        extractedCaptions.sort((a, b) => a.time - b.time);
-        console.log("✅ Total extracted captions:", extractedCaptions.length);
-        console.log("📋 Captions:", extractedCaptions);
-        setCaptions(extractedCaptions);
-      }
-    } catch (error) {
-      console.error("Error fetching captions:", error);
-      // Don't navigate away, just show empty captions
-      setCaptions([]);
-    }
-  }, [videoId]);
-
-  // Fetch video data and captions on mount
+  // Fetch image data
   useEffect(() => {
-    fetchVideoData();
-    fetchCaptions();
-  }, [fetchVideoData, fetchCaptions]);
-
-  // Video player handlers
-  const togglePlayPause = () => {
-    if (videoRef.current) {
-      if (!videoData?.minio_url) {
-        alert("Video URL không khả dụng!");
-        return;
+    const fetchImageData = async () => {
+      try {
+        console.log("Fetching image data for ID:", imageId);
+        const res = await axiosClient.get(`/images/${imageId}`);
+        console.log("Image data response:", res.data);
+        
+        if (res.data.success) {
+          const imageInfo = res.data.result;
+          console.log("🖼️ Image URL (minio_url):", imageInfo.minio_url);
+          console.log("📊 Image status:", imageInfo.status);
+          setImageData(imageInfo);
+          
+          if (!imageInfo.minio_url) {
+            console.warn("⚠️ Image has no minio_url!");
+            alert(`⚠️ Hình ảnh chưa có URL!\n\nStatus: ${imageInfo.status}\nFile: ${imageInfo.image_name}`);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching image data:", error);
+        alert("Không thể tải thông tin hình ảnh!");
+        navigate("/user/dashboard");
       }
-      
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play().catch(error => {
-          console.error("Error playing video:", error);
-          alert("Không thể phát video. Có thể video đang xử lý hoặc URL không hợp lệ.");
-        });
+    };
+
+    const fetchMetadata = async () => {
+      try {
+        console.log("Fetching metadata for image:", imageId);
+        const res = await axiosClient.get(`/images/${imageId}/metadata`);
+        console.log("📊 Metadata response:", res.data);
+        
+        if (res.data.success && res.data.data) {
+          const meta = res.data.data;
+          setMetadata(meta);
+        }
+      } catch (error) {
+        console.error("Error fetching metadata:", error);
+        setMetadata(null);
+      } finally {
+        setLoading(false);
       }
-      setIsPlaying(!isPlaying);
-    }
+    };
+
+    fetchImageData();
+    fetchMetadata();
+  }, [imageId, navigate]);
+
+  // Zoom handlers
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 3));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.5));
+  const handleResetZoom = () => setZoom(1);
+
+  const getFitScale = () => {
+    const viewport = imageContainerRef.current;
+    if (!viewport || !naturalSize.width || !naturalSize.height) return 1;
+    const viewportWidth = viewport.clientWidth;
+    const viewportHeight = viewport.clientHeight;
+    if (!viewportWidth || !viewportHeight) return 1;
+    return Math.min(viewportWidth / naturalSize.width, viewportHeight / naturalSize.height);
   };
 
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      const current = videoRef.current.currentTime;
-      setCurrentTime(current);
-      
-      // Find active caption
-      const active = captions.find(
-        cap => current >= cap.time && current <= cap.endTime
-      );
-      setActiveCaption(active);
-    }
+  const handleOriginalSize = () => {
+    const fitScale = getFitScale();
+    const originalZoom = fitScale > 0 ? 1 / fitScale : 1;
+    setZoom(Math.min(Math.max(originalZoom, 0.5), 5));
   };
 
-  const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
-    }
-  };
-
-  const seekTo = (time) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-      setCurrentTime(time);
-    }
-  };
-
-  const skipTime = (seconds) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime += seconds;
-    }
-  };
-
-  // Search functionality
-  const handleSearch = () => {
-    if (!searchTerm.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    const results = captions.filter(caption =>
-      caption.text.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setSearchResults(results);
-  };
-
-  const jumpToCaption = (time) => {
-    seekTo(time);
-    if (!isPlaying && videoRef.current) {
-      videoRef.current.play();
-      setIsPlaying(true);
-    }
-  };
+  const captionItems = metadata?.related_data?.caption || [];
+  const captionText = captionItems
+    .map((item) => item?.caption || item?.text || item?.caption_text || item?.description)
+    .filter(Boolean)
+    .join("\n\n");
+  const primaryCaption = captionItems[0] || null;
+  const captionNeedsReview = Boolean(primaryCaption?.needs_regeneration);
+  const captionConfidence = Number.isFinite(Number(primaryCaption?.caption_confidence))
+    ? Number(primaryCaption?.caption_confidence)
+    : null;
+  const captionReviewReason = primaryCaption?.regeneration_reason || primaryCaption?.caption_validation?.reason || "";
 
   // Export functions
-  const exportToSRT = () => {
-    let srtContent = "";
-    captions.forEach((caption, index) => {
-      const startTime = formatTimeToSRT(caption.time);
-      const endTime = formatTimeToSRT(caption.endTime);
-      srtContent += `${index + 1}\n${startTime} --> ${endTime}\n${caption.text}\n\n`;
-    });
+  const exportMetadataJSON = () => {
+    const exportData = {
+      image_name: imageData?.image_name,
+      dimensions: {
+        width: imageData?.width,
+        height: imageData?.height
+      },
+      format: imageData?.format,
+      file_size: imageData?.file_size,
+      metadata: metadata,
+      exported_at: new Date().toISOString()
+    };
 
-    downloadFile(srtContent, `${videoData?.file_name || 'video'}.srt`, "text/plain");
-  };
-
-  const exportToDOCX = () => {
-    let docContent = `VIDEO TRANSCRIPT - ${videoData?.file_name || 'Video'}\n`;
-    docContent += `Generated on: ${new Date().toLocaleString()}\n\n`;
-    docContent += "=" .repeat(50) + "\n\n";
-    
-    captions.forEach((caption) => {
-      const timeStr = formatTime(caption.time);
-      docContent += `[${timeStr}] ${caption.text}\n\n`;
-    });
-
-    downloadFile(docContent, `${videoData?.file_name || 'video'}_transcript.txt`, "text/plain");
-  };
-
-  const formatTimeToSRT = (seconds) => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 1000);
-    return `${pad(hrs)}:${pad(mins)}:${pad(secs)},${pad(ms, 3)}`;
-  };
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${pad(mins)}:${pad(secs)}`;
-  };
-
-  const pad = (num, size = 2) => {
-    let s = num + "";
-    while (s.length < size) s = "0" + s;
-    return s;
-  };
-
-  const downloadFile = (content, filename, type) => {
-    const blob = new Blob([content], { type });
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = `${imageData?.image_name || 'image'}_metadata.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportAnnotationsTXT = () => {
+    let txtContent = `IMAGE ANALYSIS REPORT - ${imageData?.image_name || 'Image'}\n`;
+    txtContent += `Generated on: ${new Date().toLocaleString()}\n`;
+    txtContent += `Dimensions: ${imageData?.width}x${imageData?.height}\n`;
+    txtContent += `Format: ${imageData?.format}\n`;
+    txtContent += "=" .repeat(60) + "\n\n";
+    
+    // Detected Objects
+    if (metadata?.related_data?.entity_object?.length > 0) {
+      txtContent += "DETECTED OBJECTS:\n";
+      txtContent += "-" .repeat(60) + "\n";
+      metadata.related_data.entity_object.forEach((obj, idx) => {
+        txtContent += `${idx + 1}. ${obj.object_type || 'Unknown'}\n`;
+        if (obj.name) txtContent += `   Name: ${obj.name}\n`;
+        if (obj.confidence) txtContent += `   Confidence: ${(obj.confidence * 100).toFixed(1)}%\n`;
+        if (obj.bbox) txtContent += `   Bounding Box: [${obj.bbox.join(', ')}]\n`;
+        txtContent += "\n";
+      });
+    }
+
+    // Activities
+    if (metadata?.related_data?.activity?.length > 0) {
+      txtContent += "\nACTIVITIES DETECTED:\n";
+      txtContent += "-" .repeat(60) + "\n";
+      metadata.related_data.activity.forEach((act, idx) => {
+        txtContent += `${idx + 1}. ${act.activity_type || act.description}\n`;
+        if (act.confidence) txtContent += `   Confidence: ${(act.confidence * 100).toFixed(1)}%\n`;
+        txtContent += "\n";
+      });
+    }
+
+    // Environment/Scene
+    if (metadata?.related_data?.environment?.length > 0) {
+      txtContent += "\nENVIRONMENT/SCENE:\n";
+      txtContent += "-" .repeat(60) + "\n";
+      metadata.related_data.environment.forEach((env, idx) => {
+        txtContent += `${idx + 1}. ${env.environment_type || env.scene_type}\n`;
+        if (env.description) txtContent += `   ${env.description}\n`;
+        txtContent += "\n";
+      });
+    }
+
+    const blob = new Blob([txtContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${imageData?.image_name || 'image'}_analysis.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -266,24 +200,24 @@ const AnnotationStudio = () => {
               </button>
               <div>
                 <h1 className="text-xl font-bold text-gray-800">Annotation Studio</h1>
-                <p className="text-sm text-gray-500">{videoData?.file_name}</p>
+                <p className="text-sm text-gray-500">{imageData?.image_name}</p>
               </div>
             </div>
             
             <div className="flex gap-2">
               <button
-                onClick={exportToSRT}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                onClick={exportMetadataJSON}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
               >
                 <Download size={18} />
-                Export SRT
+                Export JSON
               </button>
               <button
-                onClick={exportToDOCX}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                onClick={exportAnnotationsTXT}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
               >
                 <Download size={18} />
-                Export Transcript
+                Export Report
               </button>
             </div>
           </div>
@@ -292,183 +226,164 @@ const AnnotationStudio = () => {
 
       <div className="max-w-[1600px] mx-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Video Player */}
+          {/* Left: Image Viewer */}
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-              <div className="relative bg-black" style={{ paddingTop: '56.25%' }}>
-                {videoData?.minio_url ? (
-                  <video
-                    ref={videoRef}
-                    src={videoData.minio_url}
-                    className="absolute top-0 left-0 w-full h-full"
-                    onTimeUpdate={handleTimeUpdate}
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                    onError={(e) => {
-                      console.error("Video error:", e);
-                      console.error("Video src:", videoData?.minio_url);
-                      console.error("Video element:", e.target);
-                    }}
-                  />
+              {/* Image Display */}
+              <div
+                ref={imageContainerRef}
+                className="relative bg-gray-900 overflow-auto h-[75vh] min-h-[460px] max-h-[80vh]"
+              >
+                {imageData?.minio_url ? (
+                  <div className="w-full h-full flex items-center justify-center p-4 md:p-6">
+                    <img
+                      src={imageData.minio_url}
+                      alt={imageData.image_name}
+                      className="w-full h-full object-contain"
+                      style={{ 
+                        transform: `scale(${zoom})`,
+                        transition: 'transform 0.2s',
+                        transformOrigin: 'center center'
+                      }}
+                      onError={(e) => {
+                        console.error("Image error:", e);
+                        console.error("Image src:", imageData?.minio_url);
+                      }}
+                      onLoad={() => {
+                        const img = new Image();
+                        img.onload = () => {
+                          setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+                        };
+                        img.src = imageData.minio_url;
+                      }}
+                    />
+                  </div>
                 ) : (
-                  <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center text-white bg-gray-900">
+                  <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center text-white">
                     <div className="text-center p-8">
-                      <p className="text-lg mb-4">⚠️ Video không khả dụng</p>
+                      <p className="text-lg mb-4">⚠️ Hình ảnh không khả dụng</p>
                       <div className="text-sm text-gray-400 space-y-2 max-w-md">
-                        <p>Video đang được xử lý hoặc MinIO server không khả dụng</p>
-                        <p className="text-xs">Status: {videoData?.status || 'unknown'}</p>
-                        {videoData?.minio_url && (
-                          <div className="mt-4 p-3 bg-gray-800 rounded text-left">
-                            <p className="font-mono text-xs break-all text-yellow-400">
-                              URL: {videoData.minio_url}
-                            </p>
-                            <p className="text-xs mt-2 text-red-400">
-                              ⚠️ MinIO server (port 9000) cần phải chạy để xem video
-                            </p>
-                          </div>
-                        )}
+                        <p>Hình ảnh đang được xử lý hoặc MinIO server không khả dụng</p>
+                        <p className="text-xs">Status: {imageData?.status || 'unknown'}</p>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Video Controls */}
+              {/* Image Controls */}
               <div className="p-4 bg-gray-50">
-                <div className="flex items-center gap-4 mb-3">
-                  <button
-                    onClick={() => skipTime(-10)}
-                    className="p-2 hover:bg-gray-200 rounded-lg transition"
-                  >
-                    <SkipBack size={20} />
-                  </button>
-                  <button
-                    onClick={togglePlayPause}
-                    className="p-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                  >
-                    {isPlaying ? <Pause size={24} /> : <Play size={24} />}
-                  </button>
-                  <button
-                    onClick={() => skipTime(10)}
-                    className="p-2 hover:bg-gray-200 rounded-lg transition"
-                  >
-                    <SkipForward size={20} />
-                  </button>
-                  <span className="text-sm text-gray-600">
-                    {formatTime(currentTime)} / {formatTime(duration)}
-                  </span>
-                </div>
-
-                {/* Progress Bar */}
-                <input
-                  type="range"
-                  min="0"
-                  max={duration || 0}
-                  value={currentTime}
-                  onChange={(e) => seekTo(parseFloat(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-
-                {/* Active Caption Display */}
-                {activeCaption && (
-                  <div className="mt-4 p-3 bg-indigo-50 border-l-4 border-indigo-600 rounded">
-                    <p className="text-sm font-medium text-indigo-900">{activeCaption.text}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Search in Video */}
-            <div className="bg-white rounded-xl shadow-lg p-4">
-              <h3 className="text-lg font-semibold mb-3">🔍 Search in Video</h3>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="Tìm đoạn học sinh giơ tay..."
-                  className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
-                />
-                <button
-                  onClick={handleSearch}
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2"
-                >
-                  <Search size={18} />
-                  Search
-                </button>
-              </div>
-
-              {/* Search Results */}
-              {searchResults.length > 0 && (
-                <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
-                  <p className="text-sm text-gray-600 mb-2">
-                    Found {searchResults.length} result(s):
-                  </p>
-                  {searchResults.map((result, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => jumpToCaption(result.time)}
-                      className="p-3 bg-gray-50 hover:bg-indigo-50 rounded-lg cursor-pointer border border-gray-200 hover:border-indigo-300 transition"
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleZoomOut}
+                      className="p-2 hover:bg-gray-200 rounded-lg transition"
+                      title="Zoom Out"
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-indigo-600">
-                          {formatTime(result.time)}
-                        </span>
-                        <Play size={16} className="text-indigo-600" />
-                      </div>
-                      <p className="text-sm text-gray-700 mt-1">{result.text}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+                      <ZoomOut size={20} />
+                    </button>
+                    <span className="text-sm font-medium text-gray-700 min-w-[60px] text-center">
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button
+                      onClick={handleZoomIn}
+                      className="p-2 hover:bg-gray-200 rounded-lg transition"
+                      title="Zoom In"
+                    >
+                      <ZoomIn size={20} />
+                    </button>
+                    <button
+                      onClick={handleResetZoom}
+                      className="p-2 hover:bg-gray-200 rounded-lg transition text-xs px-3"
+                      title="Fit to screen"
+                    >
+                      Fit
+                    </button>
+                    <button
+                      onClick={handleOriginalSize}
+                      className="p-2 hover:bg-gray-200 rounded-lg transition text-xs px-3"
+                      title="Original size"
+                    >
+                      1:1
+                    </button>
+                  </div>
 
-              {searchTerm && searchResults.length === 0 && (
-                <p className="mt-4 text-sm text-gray-500 text-center">
-                  No results found for "{searchTerm}"
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Action Log */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-lg p-4 sticky top-24">
-              <h3 className="text-lg font-semibold mb-4">📋 Action Log</h3>
-              
-              {captions.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <p>No captions available</p>
-                  <p className="text-sm mt-2">Captions will appear here when video is processed</p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[calc(100vh-250px)] overflow-y-auto pr-2">
-                  {captions.map((caption, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => jumpToCaption(caption.time)}
-                      className={`p-3 rounded-lg border cursor-pointer transition ${
-                        activeCaption?.segmentId === caption.segmentId
-                          ? 'bg-indigo-100 border-indigo-400 shadow-md'
-                          : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowAnnotations(!showAnnotations)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                        showAnnotations 
+                          ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-mono font-semibold text-indigo-600">
-                          {formatTime(caption.time)}
-                        </span>
-                        {activeCaption?.segmentId === caption.segmentId && (
-                          <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded">
-                            Playing
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        {caption.text}
+                      {showAnnotations ? <Eye size={18} /> : <EyeOff size={18} />}
+                      <span className="text-sm">
+                        {showAnnotations ? 'Hide' : 'Show'} Annotations
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Image Info */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="grid grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Dimensions:</span>
+                      <p className="font-semibold text-gray-800">
+                        {imageData?.width} × {imageData?.height}
                       </p>
                     </div>
-                  ))}
+                    <div>
+                      <span className="text-gray-500">Format:</span>
+                      <p className="font-semibold text-gray-800 uppercase">
+                        {imageData?.format}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">File Size:</span>
+                      <p className="font-semibold text-gray-800">
+                        {imageData?.file_size ? (imageData.file_size / 1024 / 1024).toFixed(2) + ' MB' : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Status:</span>
+                      <p className="font-semibold text-gray-800 capitalize">
+                        {imageData?.status}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Right: Caption Panel */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-xl shadow-lg p-4 sticky top-24">
+              <h3 className="text-lg font-semibold mb-4">Caption</h3>
+
+              {captionNeedsReview && (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle size={16} /> Caption cần kiểm tra lại
+                  </div>
+                  <div className="mt-1 text-xs">
+                    {captionConfidence !== null ? `Độ tin cậy: ${captionConfidence}%` : "Độ tin cậy: chưa có"}
+                    {captionReviewReason ? ` - ${captionReviewReason}` : ""}
+                  </div>
+                </div>
+              )}
+
+              {!captionText ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>Chưa có caption cho ảnh này</p>
+                  <p className="text-sm mt-2">Caption sẽ hiển thị sau khi ảnh được xử lý</p>
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-gray-800 leading-relaxed whitespace-pre-wrap max-h-[calc(100vh-250px)] overflow-y-auto">
+                  {captionText}
                 </div>
               )}
             </div>

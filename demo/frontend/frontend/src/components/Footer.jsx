@@ -39,9 +39,7 @@ const Footer = () => {
            <div className="space-y-4">
               <h4 className="font-bold text-base mb-2">Annotation Tools</h4>
               <ul className="space-y-3 text-gray-400">
-                 <li><a href="#" className="hover:text-white transition">Video Labeling</a></li>
                  <li><a href="#" className="hover:text-white transition">Auto Detection (AI)</a></li>
-                 <li><a href="#" className="hover:text-white transition">Timeline Editor</a></li>
                  <li><a href="#" className="hover:text-white transition">Export to JSON/CSV</a></li>
               </ul>
            </div>
@@ -94,7 +92,7 @@ const Footer = () => {
                  <Video size={28} fill="white" />
                  ANNOTATION.IO
               </h2>
-              <p className="text-gray-500 text-xs mt-1">© 2024 Student Action Annotation Project.</p>
+              <p className="text-gray-500 text-xs mt-1">© 2026 Student Action Annotation Project.</p>
            </div>
            <div className="flex gap-6 text-xs text-gray-500 font-medium">
               <a href="#" className="hover:text-white transition">Privacy</a>

@@ -1,0 +1,60 @@
+# ============================================================
+# PYTHON & AI
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.Python
+# *.py  <-- ĐÃ XÓA/COMMENT DÒNG NÀY (Để không bị ẩn file code)
+
+# AI Models (Chặn các file model nặng đã khiến bạn lỗi Push)
+models/
+ai_service/models/
+*.pt
+*.pth
+*.weights
+*.h5
+*.onnx
+
+# Data (Dữ liệu huấn luyện và thống kê)
+*.csv
+*.json
+!demo/backend/database_dumps_json/**/*.json  # Giữ lại các dump quan trọng
+
+# ============================================================
+# PROJECT SPECIFIC (AI SERVICE)
+# ============================================================
+temp_videos/
+output_videos/
+frames/
+*.log
+
+# ============================================================
+# IDEs & OS
+# ============================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ============================================================
+# ENVIRONMENT & SECRETS
+# ============================================================
+.env
+.env.local
+.flaskenv
+
+# ============================================================
+# NODE.JS (Nếu có phần Frontend/Backend JS)
+# ============================================================
+node_modules/
+npm-debug.log*
+
+# Chặn các file model nặng
+demo/ai_service/models/*.pt
+**/models/*.pt
+*.pt

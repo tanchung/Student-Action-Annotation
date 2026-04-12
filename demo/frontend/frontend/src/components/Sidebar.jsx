@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
-  Video,
+  Image,
   FileJson,       
   Network,        
   Database,       
@@ -23,15 +23,16 @@ const Sidebar = () => {
 
   // Cấu trúc Menu
   const menu = [
+    
     { 
       name: "Dashboard", 
       path: "/admin/dashboard", 
       icon: <LayoutDashboard size={20} /> 
     },
     { 
-      name: "Quản lý Video", 
-      path: "/admin/videos", 
-      icon: <Video size={20} /> 
+      name: "Quản lý Hình ảnh", 
+      path: "/admin/images", 
+      icon: <Image size={20} /> 
     },
     {
       name: "Quản lý Dữ liệu",
@@ -58,7 +59,7 @@ const Sidebar = () => {
     <div className="h-screen w-64 bg-gradient-to-b from-indigo-900 to-slate-900 text-white flex flex-col shadow-2xl flex-shrink-0 transition-all duration-300">
       {/* Header Sidebar */}
       <div className="text-xl font-bold px-6 py-6 border-b border-indigo-700/50 text-center tracking-wide flex items-center justify-center gap-2">
-         <span className="bg-white text-indigo-900 rounded p-1"><Video size={20}/></span>
+         <span className="bg-white text-indigo-900 rounded p-1"><Image size={20}/></span>
          <span>Annotation Admin</span>
       </div>
 

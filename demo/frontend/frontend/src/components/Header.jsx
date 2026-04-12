@@ -47,6 +47,12 @@ const Header = ({ activePage = "" }) => {
           Dashboard
         </button>
         <button 
+          onClick={() => handleNavigateWithAuth("/my-images")} 
+          className={`transition ${activePage === "my-images" ? "text-gray-900 font-semibold" : "hover:text-gray-900"}`}
+        >
+          My Images
+        </button>
+        <button 
           onClick={() => handleNavigateWithAuth("/my-videos")} 
           className={`transition ${activePage === "my-videos" ? "text-gray-900 font-semibold" : "hover:text-gray-900"}`}
         >
@@ -77,9 +83,13 @@ const Header = ({ activePage = "" }) => {
               Logout
             </button>
             
-            <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shadow-lg shadow-indigo-200">
+            <button
+              onClick={() => handleNavigateWithAuth("/user-detail")}
+              title="Xem thông tin người dùng"
+              className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition"
+            >
               {user.username ? user.username[0].toUpperCase() : "U"}
-            </div>
+            </button>
           </>
         ) : (
           <button 

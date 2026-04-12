@@ -32,6 +32,11 @@ router.get('/list', verifyToken, videoController.getListVideos);
 router.post('/:video_id/soft-delete', verifyToken, isAdmin, videoController.softDeleteVideo);
 router.post('/:video_id/restore', verifyToken, isAdmin, videoController.restoreVideo);
 
+// ==========================================
+// AI ANALYSIS ROUTE - Must be before /:video_id routes
+// ==========================================
+router.post('/:video_id/analyze', verifyToken, videoController.analyzeVideo);
+
 // Các routes cụ thể phải đặt TRƯỚC route động /:video_id
 router.get('/:video_id/metadata', verifyToken, videoController.getVideoFullMetadata);
 router.get('/:video_id/full', verifyToken, videoController.getVideoFullMetadata);

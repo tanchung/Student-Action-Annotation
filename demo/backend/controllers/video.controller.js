@@ -8,6 +8,7 @@ const { minioClient, BUCKET_NAME } = require('../config/minio');
 // ✅ DANH SÁCH COLLECTION PHỤ (Khớp với file CSV import và schema mới)
 const RELATED_COLLECTIONS = [
     'environment', 
+    'frame',
     'segment', 
     'person',          
     'entity_object',   
@@ -53,6 +54,16 @@ exports.getListVideos = async (req, res) => {
             duration: 1, 
             thumbnail_url: 1, 
             status: 1,       
+            processing_started_at: 1,
+            processed_at: 1,
+            ai_pipeline_exit_code: 1,
+            ai_pipeline_finished_at: 1,
+            caption_confidence: 1,
+            confidence_score: 1,
+            caption_is_reliable: 1,
+            caption_regeneration_required: 1,
+            caption_review_required: 1,
+            caption_regeneration_reason: 1,
             created_at: 1,
             is_deleted: 1,
             deleted_at: 1,
@@ -452,9 +463,11 @@ exports.getVideoGraphData = async (req, res) => {
         // Chúng ta lấy cả node cha (:Video) và các node con (:Person, :Segment...)
         const query = `
             MATCH (v:Video {mongo_id: $vid})
-            OPTIONAL MATCH path = (v)-[*1]-(n)
+            // Traverse deeper but block global roots to avoid pulling other videos.
+            OPTIONAL MATCH path = (v)-[*1..8]-(n)
+            WHERE NONE(x IN nodes(path) WHERE x:RootImage OR x:RootVideo)
             RETURN v, path
-            LIMIT 500
+            LIMIT 2000
         `;
 
         const result = await session.run(query, { vid: video_id });
@@ -465,9 +478,10 @@ exports.getVideoGraphData = async (req, res) => {
         result.records.forEach(record => {
             // Xử lý node Video gốc
             const v = record.get('v');
-            if (v && !nodesMap.has(v.identity.toString())) {
-                nodesMap.set(v.identity.toString(), {
-                    id: v.identity.toString(),
+            const videoNodeId = v ? (v.elementId || v.identity.toString()) : null;
+            if (v && videoNodeId && !nodesMap.has(videoNodeId)) {
+                nodesMap.set(videoNodeId, {
+                    id: videoNodeId,
                     labels: v.labels,
                     properties: cleanProps(v.properties)
                 });
@@ -482,9 +496,10 @@ exports.getVideoGraphData = async (req, res) => {
                     const rel = seg.relationship;
 
                     [start, end].forEach(node => {
-                        if (!nodesMap.has(node.identity.toString())) {
-                            nodesMap.set(node.identity.toString(), {
-                                id: node.identity.toString(),
+                        const nodeId = node.elementId || node.identity.toString();
+                        if (!nodesMap.has(nodeId)) {
+                            nodesMap.set(nodeId, {
+                                id: nodeId,
                                 labels: node.labels,
                                 properties: cleanProps(node.properties)
                             });
@@ -856,6 +871,228 @@ exports.restoreVideo = async (req, res) => {
         res.status(500).json({ 
             success: false, 
             message: "Lỗi server khi khôi phục video: " + error.message 
+        });
+    }
+};
+
+// ==========================================
+// AI ANALYSIS
+// ==========================================
+exports.analyzeVideo = async (req, res) => {
+    try {
+        const { video_id } = req.params;
+        const { role } = req.user || {};
+
+        if (!video_id || !ObjectId.isValid(video_id)) {
+            return res.status(400).json({
+                success: false,
+                message: "video_id không hợp lệ"
+            });
+        }
+
+        const video = await Video.findOne({
+            _id: new ObjectId(video_id),
+            $or: [
+                { is_deleted: { $exists: false } },
+                { is_deleted: false }
+            ]
+        });
+
+        if (!video) {
+            return res.status(404).json({
+                success: false,
+                message: "Không tìm thấy video"
+            });
+        }
+
+        if (role !== 'admin' && video.uploader_id.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: "Bạn không có quyền phân tích video này"
+            });
+        }
+
+        if (video.status === 'processing') {
+            return res.status(400).json({
+                success: false,
+                message: "Video đang được xử lý, vui lòng đợi"
+            });
+        }
+
+        const path = require('path');
+        const fs = require('fs').promises;
+        const os = require('os');
+        const { spawn } = require('child_process');
+
+        const tempDir = os.tmpdir();
+        const ext = path.extname(video.clip_name || '') || '.mp4';
+        const tempFilePath = path.join(tempDir, `${video_id}_${Date.now()}${ext}`);
+
+        try {
+            const objectName = video.minio_url.split('/').pop().split('?')[0];
+            console.log(`📥 Downloading video from MinIO: bucket=${BUCKET_NAME}, object=${objectName}`);
+
+            const stream = await minioClient.getObject(BUCKET_NAME, objectName);
+            const chunks = [];
+            for await (const chunk of stream) {
+                chunks.push(chunk);
+            }
+
+            const buffer = Buffer.concat(chunks);
+            await fs.writeFile(tempFilePath, buffer);
+            console.log(`✅ Video downloaded to: ${tempFilePath}`);
+
+            await Video.updateOne(
+                { _id: new ObjectId(video_id) },
+                {
+                    $set: {
+                        status: 'processing',
+                        processing_started_at: new Date(),
+                        error_message: null,
+                        ai_pipeline_exit_code: null,
+                        ai_pipeline_finished_at: null
+                    }
+                }
+            );
+
+            const pythonScript = path.join(__dirname, '..', '..', 'ai_service', 'process_video.py');
+
+            console.log('🐍 Launching video AI analysis:');
+            console.log(`   Script: ${pythonScript}`);
+            console.log(`   Video : ${tempFilePath}`);
+            console.log(`   ID    : ${video_id}`);
+
+            const pythonProcess = spawn('python', [pythonScript, tempFilePath, video_id], {
+                env: { ...process.env, MONGODB_URI: process.env.MONGODB_URI },
+                detached: false,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                windowsHide: true
+            });
+
+            let pythonOutput = '';
+            let pythonError = '';
+
+            pythonProcess.stdout.on('data', (data) => {
+                const output = data.toString();
+                pythonOutput += output;
+                console.log(`[VideoAI stdout]: ${output}`);
+            });
+
+            pythonProcess.stderr.on('data', (data) => {
+                const error = data.toString();
+                pythonError += error;
+                console.error(`[VideoAI stderr]: ${error}`);
+            });
+
+            pythonProcess.on('exit', async (code) => {
+                console.log(`Video AI process exited with code: ${code}`);
+                if (code === 0) {
+                    try {
+                        await Video.updateOne(
+                            { _id: new ObjectId(video_id) },
+                            {
+                                $set: {
+                                    status: 'done',
+                                    error_message: null,
+                                    processed_at: new Date(),
+                                    ai_pipeline_exit_code: 0,
+                                    ai_pipeline_finished_at: new Date()
+                                }
+                            }
+                        );
+                    } catch (updateErr) {
+                        console.error('Failed to update video status to done:', updateErr.message);
+                    }
+                } else {
+                    console.error(`❌ Video AI failed with code ${code}`);
+                    console.error(`Last stdout: ${pythonOutput.slice(-500)}`);
+                    console.error(`Last stderr: ${pythonError.slice(-500)}`);
+
+                    try {
+                        await Video.updateOne(
+                            { _id: new ObjectId(video_id) },
+                            {
+                                $set: {
+                                    status: 'error',
+                                    processed_at: new Date(),
+                                    error_message: pythonError.slice(-1000) || `Video AI process failed with code ${code}`,
+                                    ai_pipeline_exit_code: code,
+                                    ai_pipeline_finished_at: new Date()
+                                }
+                            }
+                        );
+                    } catch (updateErr) {
+                        console.error('Failed to update video status to error:', updateErr.message);
+                    }
+                }
+
+                setTimeout(async () => {
+                    try {
+                        await fs.unlink(tempFilePath);
+                        console.log(`🗑️ Cleaned temp video: ${tempFilePath}`);
+                    } catch (err) {
+                        console.error('Error deleting temp video:', err.message);
+                    }
+                }, 5000);
+            });
+
+            pythonProcess.on('error', async (error) => {
+                console.error('❌ Failed to start video AI process:', error);
+                try {
+                    await Video.updateOne(
+                        { _id: new ObjectId(video_id) },
+                        {
+                            $set: {
+                                status: 'error',
+                                processed_at: new Date(),
+                                error_message: `Failed to start process: ${error.message}`,
+                                ai_pipeline_exit_code: -1,
+                                ai_pipeline_finished_at: new Date()
+                            }
+                        }
+                    );
+                } catch (updateErr) {
+                    console.error('Failed to update video status after spawn error:', updateErr.message);
+                }
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: 'Đã bắt đầu phân tích video theo pipeline AI. Vui lòng đợi vài phút.',
+                video_id,
+                status: 'processing'
+            });
+        } catch (downloadError) {
+            console.error('❌ Error preparing video AI analysis:', downloadError);
+
+            try {
+                await fs.unlink(tempFilePath);
+            } catch (cleanupErr) {
+                // ignore
+            }
+
+            await Video.updateOne(
+                { _id: new ObjectId(video_id) },
+                {
+                    $set: {
+                        status: 'error',
+                        processed_at: new Date(),
+                        error_message: `Không thể tải video từ MinIO: ${downloadError.message}`
+                    }
+                }
+            );
+
+            return res.status(500).json({
+                success: false,
+                message: 'Lỗi khi chuẩn bị phân tích video',
+                error: downloadError.message
+            });
+        }
+    } catch (error) {
+        console.error('Analyze Video Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Lỗi server khi phân tích video'
         });
     }
 };

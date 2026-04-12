@@ -9,7 +9,7 @@ import RegisterPage from "./pages/auth/RegisterPage";
 // --- 2. IMPORT LAYOUT VÀ TRANG ADMIN ---
 import AdminLayout from "./layouts/AdminLayout";
 import Dashboard from "./pages/admin/Dashboard";
-import VideoManager from "./pages/admin/VideoManager"; // Đây là file App.tsx cũ của bạn (đổi tên và di chuyển vào đây)
+import ImageManager from "./pages/admin/ImageManager"; // Quản lý hình ảnh
 import MetadataManager from "./pages/admin/MetadataManager";
 import PostgresManager from "./pages/admin/PostgresManager";
 import AdminManager from "./pages/admin/AdminManager";
@@ -18,13 +18,16 @@ import UserDetail from "./pages/admin/UserDetail";
 import AddUser from "./pages/admin/AddUser";
 
 // --- 3. IMPORT TRANG USER (HỌC SINH) ---
-// Nếu bạn chưa tạo file này, hãy xem code mẫu ở cuối bài để tạo tạm
 import StudentHome from "./pages/user/StudentHome"; 
 import UserDashboard from "./pages/user/UserDashboard";
+import MyImages from "./pages/user/MyImages";
 import MyVideos from "./pages/user/MyVideos";
 import AnnotationStudio from "./pages/user/AnnotationStudio";
+import ImageViewer from "./pages/user/ImageViewer";
 import VideoViewer from "./pages/user/VideoViewer";
+import VideoAnnotation from "./pages/user/VideoAnnotation";
 import TutorialsPage from "./pages/user/TutorialsPage";
+import UserDetailPage from "./pages/user/UserDetailPage";
 
 // =================================================================
 // COMPONENT: PROTECTED ROUTE (BẢO VỆ & PHÂN QUYỀN)
@@ -110,8 +113,8 @@ const App = () => {
             {/* Thống kê */}
             <Route path="/admin/dashboard" element={<Dashboard />} />
             
-            {/* Quản lý Video (Code cũ của bạn) */}
-            <Route path="/admin/videos" element={<VideoManager />} />
+            {/* Quản lý Hình ảnh */}
+            <Route path="/admin/images" element={<ImageManager />} />
             <Route path="/admin/metadata" element={<MetadataManager />} />
             <Route path="/admin/postgres" element={<PostgresManager />} />
             
@@ -133,10 +136,14 @@ const App = () => {
            
            {/* Các trang cần đăng nhập */}
            <Route path="/dashboard" element={<UserDashboard />} />
+           <Route path="/my-images" element={<MyImages />} />
            <Route path="/my-videos" element={<MyVideos />} />
            <Route path="/user/dashboard" element={<UserDashboard />} />
+           <Route path="/image/:imageId" element={<ImageViewer />} />
            <Route path="/video/:videoId" element={<VideoViewer />} />
-           <Route path="/annotation-studio/:videoId" element={<AnnotationStudio />} />
+           <Route path="/annotation-studio/:imageId" element={<AnnotationStudio />} />
+           <Route path="/video-annotation/:videoId" element={<VideoAnnotation />} />
+            <Route path="/user-detail" element={<UserDetailPage />} />
 
         </Route>
 

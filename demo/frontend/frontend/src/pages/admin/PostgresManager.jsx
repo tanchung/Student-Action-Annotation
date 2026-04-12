@@ -1,29 +1,26 @@
 import React, { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import { 
-  Database, ArrowLeft, ChevronRight, Table, Edit3, Save, X, FileVideo, Server, Search, Trash2, AlertCircle 
+  Database, ArrowLeft, ChevronRight, Table, Edit3, Save, X, Image as ImageIcon, Server, Search, Trash2 
 } from "lucide-react";
 
 // --- CẤU HÌNH KHÓA CHÍNH ---
 const PRIMARY_KEYS = {
-  videos: "video_id",
+  images: "image_id",
   environments: "env_id",
-  segments: "segment_id",
   persons: "person_id",        
   entity_objects: "object_id", 
   activities: "activity_id",
-  interactions: "interaction_id",
-  captions: "caption_id",     
-  users: "user_id"
+  captions: "caption_id"
 };
 
 const PostgresManager = () => {
   // State
   const [step, setStep] = useState(1); 
-  const [videos, setVideos] = useState([]);
+  const [images, setImages] = useState([]);
   // eslint-disable-next-line no-unused-vars
   const [loading, setLoading] = useState(false);
-  const [selectedVideo, setSelectedVideo] = useState(null); 
+  const [selectedImage, setSelectedImage] = useState(null); 
   const [pgData, setPgData] = useState(null); 
   const [selectedTable, setSelectedTable] = useState(null);
   
@@ -49,27 +46,27 @@ const PostgresManager = () => {
     return false;
   };
 
-  const fetchVideos = async () => {
+  const fetchImages = async () => {
     setLoading(true);
     try {
-        const url = showDeleted ? "/videos/list?show_deleted=true" : "/videos/list";
+        const url = showDeleted ? "/images/list?show_deleted=true" : "/images/list";
         const res = await axiosClient.get(url);
-        if (res.data?.success) setVideos(res.data.data || []);
+        if (res.data?.success) setImages(res.data.data || []);
     } catch(e) { console.error(e); } finally { setLoading(false); }
   };
 
   useEffect(() => { 
-    fetchVideos(); 
+    fetchImages(); 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDeleted]);
 
-  const handleSelectVideo = async (video) => {
+  const handleSelectImage = async (image) => {
     setLoading(true);
     try {
       // Gửi _id lên API Postgres
-      const res = await axiosClient.get(`/videos/${video._id}/postgres`);
+      const res = await axiosClient.get(`/images/${image._id}/postgres`);
       if (res.data?.success) { 
-          setSelectedVideo(video); 
+          setSelectedImage(image); 
           setPgData(res.data.data); 
           setSearchTerm(""); 
           setStep(2); 
@@ -86,7 +83,7 @@ const PostgresManager = () => {
   const handleBack = () => { 
       setSearchTerm(""); 
       if(step===3){ setStep(2); setSelectedTable(null); } 
-      else if(step===2){ setStep(1); setSelectedVideo(null); } 
+      else if(step===2){ setStep(1); setSelectedImage(null); } 
   };
 
   const openEditModal = (item) => {
@@ -114,59 +111,59 @@ const PostgresManager = () => {
         updateData: editingData               
       };
       // Gọi đúng API update
-      const res = await axiosClient.put("/videos/update-postgres", payload);
+      const res = await axiosClient.put("/images/update-postgres", payload);
       if (res.data?.success) {
         alert("✅ Cập nhật PG thành công!");
         setIsEditModalOpen(false);
-        await handleSelectVideo(selectedVideo); 
+        await handleSelectImage(selectedImage); 
       } else { alert("⚠️ " + res.data.message); }
     } catch { alert("❌ Server Error"); }
   };
 
-  const handleSoftDelete = async (video, e) => {
+  const handleSoftDelete = async (image, e) => {
     e.stopPropagation();
     
-    if (!window.confirm(`⚠️ Bạn có chắc muốn xóa video "${video.clip_name || 'Untitled'}"?\n\n` +
-      "Video sẽ được đánh dấu là đã xóa (soft delete) trong MongoDB, PostgreSQL và Neo4j.\n" +
-      "Bạn có thể xem lại trong mục 'Video đã xóa'.")) {
+    if (!window.confirm(`⚠️ Bạn có chắc muốn xóa hình ảnh "${image.image_name || 'Untitled'}"?\n\n` +
+      "Hình ảnh sẽ được đánh dấu là đã xóa (soft delete) trong MongoDB, PostgreSQL và Neo4j.\n" +
+      "Bạn có thể xem lại trong mục 'Hình ảnh đã xóa'.")) {
       return;
     }
 
     setLoading(true);
     try {
-      const res = await axiosClient.post(`/videos/${video._id}/soft-delete`);
+      const res = await axiosClient.post(`/images/${image._id}/soft-delete`);
       if (res.data?.success) {
-        alert("✅ Đã xóa video thành công!");
-        await fetchVideos();
+        alert("✅ Đã xóa hình ảnh thành công!");
+        await fetchImages();
       } else {
         alert("⚠️ " + res.data.message);
       }
     } catch (error) {
-      alert("❌ Lỗi khi xóa video: " + (error.response?.data?.message || error.message));
+      alert("❌ Lỗi khi xóa hình ảnh: " + (error.response?.data?.message || error.message));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRestore = async (video, e) => {
+  const handleRestore = async (image, e) => {
     e.stopPropagation();
     
-    if (!window.confirm(`✅ Bạn có chắc muốn khôi phục video "${video.clip_name || 'Untitled'}"?\n\n` +
-      "Video sẽ được khôi phục trong MongoDB, PostgreSQL và Neo4j.")) {
+    if (!window.confirm(`✅ Bạn có chắc muốn khôi phục hình ảnh "${image.image_name || 'Untitled'}"?\n\n` +
+      "Hình ảnh sẽ được khôi phục trong MongoDB, PostgreSQL và Neo4j.")) {
       return;
     }
 
     setLoading(true);
     try {
-      const res = await axiosClient.post(`/videos/${video._id}/restore`);
+      const res = await axiosClient.post(`/images/${image._id}/restore`);
       if (res.data?.success) {
-        alert("✅ Đã khôi phục video thành công!");
-        await fetchVideos();
+        alert("✅ Đã khôi phục hình ảnh thành công!");
+        await fetchImages();
       } else {
         alert("⚠️ " + res.data.message);
       }
     } catch (error) {
-      alert("❌ Lỗi khi khôi phục video: " + (error.response?.data?.message || error.message));
+      alert("❌ Lỗi khi khôi phục hình ảnh: " + (error.response?.data?.message || error.message));
     } finally {
       setLoading(false);
     }
@@ -192,10 +189,10 @@ const PostgresManager = () => {
   };
 
   // --- LOGIC LỌC ---
-  const filteredVideos = videos.filter(v => {
+  const filteredImages = images.filter(v => {
       if (!searchTerm) return true;
       const term = searchTerm.toLowerCase();
-      const name = (v.clip_name || getFileNameFromUrl(v.minio_url)).toLowerCase();
+      const name = (v.image_name || getFileNameFromUrl(v.minio_url)).toLowerCase();
       // Sử dụng _id để lọc
       const id = v._id?.toLowerCase() || "";
       return name.includes(term) || id.includes(term);
@@ -215,28 +212,39 @@ const PostgresManager = () => {
        <div className="flex justify-between border-b pb-4">
           <div>
              <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Server className="text-blue-600"/> Quản lý PostgreSQL</h2>
-             <p className="text-sm text-gray-500">{step > 1 && selectedVideo && (selectedVideo.clip_name || getFileNameFromUrl(selectedVideo.minio_url))}</p>
+             <p className="text-sm text-gray-500">{step > 1 && selectedImage && (selectedImage.image_name || getFileNameFromUrl(selectedImage.minio_url))}</p>
           </div>
-          {step > 1 && <button onClick={handleBack} className="border px-4 py-2 rounded flex gap-2 items-center"><ArrowLeft size={16}/> Back</button>}
+          <div className="flex items-center gap-3">
+            {step === 1 && (
+              <button 
+                onClick={() => setShowDeleted(!showDeleted)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition ${
+                  showDeleted 
+                    ? "bg-red-600 text-white hover:bg-red-700" 
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                <Trash2 size={16} />
+                {showDeleted ? "Xem hình ảnh thường" : "Hình ảnh đã xóa"}
+              </button>
+            )}
+            {step > 1 && <button onClick={handleBack} className="border px-4 py-2 rounded flex gap-2 items-center"><ArrowLeft size={16}/> Back</button>}
+          </div>
        </div>
 
-       {/* STEP 1: VIDEOS */}
+       {/* STEP 1: IMAGES */}
        {step === 1 && (
           <div className="bg-white rounded-xl shadow border overflow-hidden">
              <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                  <div className="flex gap-3 items-center">
-                   <span className="font-bold text-gray-700">Danh sách Video ({filteredVideos.length})</span>
-                   <button
-                     onClick={() => setShowDeleted(!showDeleted)}
-                     className={`px-3 py-1 text-xs font-medium rounded-lg transition flex items-center gap-1 ${
-                       showDeleted 
-                         ? 'bg-red-100 text-red-700 border border-red-300' 
-                         : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
-                     }`}
-                   >
-                     <AlertCircle size={14} />
-                     {showDeleted ? 'Tất cả Video' : 'Video đã xóa'}
-                   </button>
+                   <span className="font-bold text-gray-700 flex items-center gap-2">
+                     Danh sách Hình ảnh ({filteredImages.length})
+                     {showDeleted && (
+                       <span className="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full font-semibold">
+                         Đã xóa
+                       </span>
+                     )}
+                   </span>
                  </div>
                  <div className="relative w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -251,16 +259,16 @@ const PostgresManager = () => {
              </div>
 
              <table className="w-full text-left">
-                <thead className="bg-white border-b text-gray-500 text-xs uppercase"><tr><th className="p-4">ID</th><th className="p-4">Tên Clip</th><th className="p-4">Hành động</th><th className="p-4"></th></tr></thead>
+                <thead className="bg-white border-b text-gray-500 text-xs uppercase"><tr><th className="p-4">ID</th><th className="p-4">Tên Hình ảnh</th><th className="p-4">Hành động</th><th className="p-4"></th></tr></thead>
                 <tbody>
-                   {filteredVideos.length > 0 ? (
-                       filteredVideos.map(v => (
+                   {filteredImages.length > 0 ? (
+                       filteredImages.map(v => (
                           <tr key={v._id} className="hover:bg-blue-50 border-b last:border-0 transition">
                              <td className="p-4 text-blue-600 font-mono font-bold text-sm">{v._id}</td>
                              <td className="p-4">
                                  <div className="flex gap-2 items-center text-sm">
-                                   <FileVideo size={16} className="text-gray-400"/>
-                                   {v.clip_name || getFileNameFromUrl(v.minio_url)}
+                                   <ImageIcon size={16} className="text-gray-400"/>
+                                   {v.image_name || getFileNameFromUrl(v.minio_url)}
                                    {v.is_deleted && (
                                      <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
                                        <AlertCircle size={12} /> Đã xóa
@@ -285,11 +293,11 @@ const PostgresManager = () => {
                                  </button>
                                )}
                              </td>
-                             <td className="p-4 cursor-pointer" onClick={() => handleSelectVideo(v)}><ChevronRight size={18} className="text-gray-400"/></td>
+                             <td className="p-4 cursor-pointer" onClick={() => handleSelectImage(v)}><ChevronRight size={18} className="text-gray-400"/></td>
                           </tr>
                        ))
                    ) : (
-                       <tr><td colSpan="4" className="p-8 text-center text-gray-400">{showDeleted ? "Không có video nào đã xóa." : "Không tìm thấy video nào."}</td></tr>
+                       <tr><td colSpan="4" className="p-8 text-center text-gray-400">{showDeleted ? "Không có hình ảnh nào đã xóa." : "Không tìm thấy hình ảnh nào."}</td></tr>
                    )}
                 </tbody>
              </table>
@@ -299,12 +307,14 @@ const PostgresManager = () => {
        {/* STEP 2: TABLES */}
        {step === 2 && pgData && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-             {Object.keys(pgData).map(name => (
+           {Object.keys(pgData)
+            .filter((name) => !["interactions", "interaction_members"].includes(name))
+            .map(name => (
                 <div key={name} onClick={() => handleSelectTable(name)} className="bg-white p-6 rounded-xl border shadow-sm hover:border-blue-400 cursor-pointer flex justify-between">
                    <div className="flex gap-3 items-center"><Table className="text-blue-600"/><h3 className="font-bold capitalize">{name}</h3></div>
                    <span className="text-xs text-gray-500">{pgData[name]?.length} rows</span>
                 </div>
-             ))}
+           ))}
           </div>
        )}
 

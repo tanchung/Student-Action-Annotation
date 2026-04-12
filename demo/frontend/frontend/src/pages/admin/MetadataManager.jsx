@@ -1,28 +1,26 @@
 import React, { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import { 
-  Database, ArrowLeft, ChevronRight, Layers, Edit3, Save, X, FileVideo, Search, Trash2, AlertCircle
+  Database, ArrowLeft, ChevronRight, Layers, Edit3, Save, X, Image as ImageIcon, Search, Trash2, AlertCircle
 } from "lucide-react";
 
 // --- CẤU HÌNH HIỂN THỊ ID ---
 const MONGO_DISPLAY_KEYS = {
-  video: "_id",
+  image: "_id",
   environment: "env_id",
-  segment: "segment_id",
   person: "person_id",
   entity_object: "object_id",
   activity: "activity_id",
-  interaction: "interaction_id",
   caption: "caption_id"
 };
 
 const MetadataManager = () => {
   // State
   const [step, setStep] = useState(1); 
-  const [videos, setVideos] = useState([]);
+  const [images, setImages] = useState([]);
   // eslint-disable-next-line no-unused-vars
   const [loading, setLoading] = useState(false);
-  const [selectedVideo, setSelectedVideo] = useState(null); 
+  const [selectedImage, setSelectedImage] = useState(null); 
   const [fullMetadata, setFullMetadata] = useState(null);   
   const [selectedCollection, setSelectedCollection] = useState(null);
   
@@ -35,7 +33,7 @@ const MetadataManager = () => {
   const [originalId, setOriginalId] = useState(null);
   
   // Delete State
-  const [showDeleted, setShowDeleted] = useState(false); // Toggle để xem video đã xóa    
+  const [showDeleted, setShowDeleted] = useState(false); // Toggle để xem hình ảnh đã xóa    
 
   // Helper
   const getFileNameFromUrl = (url) => { 
@@ -51,28 +49,28 @@ const MetadataManager = () => {
     return false;
   };
 
-  const fetchVideos = async () => {
+  const fetchImages = async () => {
     setLoading(true);
     try {
-      // Thêm query param để lấy video đã xóa nếu showDeleted = true
-      const url = showDeleted ? "/videos/list?show_deleted=true" : "/videos/list";
+      // Thêm query param để lấy hình ảnh đã xóa nếu showDeleted = true
+      const url = showDeleted ? "/images/list?show_deleted=true" : "/images/list";
       const res = await axiosClient.get(url);
-      if (res.data?.success) setVideos(res.data.data || []);
+      if (res.data?.success) setImages(res.data.data || []);
     } catch(e) { console.error(e); } finally { setLoading(false); }
   };
 
   useEffect(() => { 
-    fetchVideos(); 
+    fetchImages(); 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDeleted]); // Only re-fetch when showDeleted changes
 
-  const handleSelectVideo = async (video) => {
+  const handleSelectImage = async (image) => {
     setLoading(true);
     try {
-      // SỬ DỤNG _id GỐC
-      const res = await axiosClient.get(`/videos/${video._id}/full`);
+      // Sử DỤNG _id GỐC
+      const res = await axiosClient.get(`/images/${image._id}/full`);
       if (res.data?.success) { 
-          setSelectedVideo(video); 
+          setSelectedImage(image); 
           setFullMetadata(res.data.data); 
           setSearchTerm(""); 
           setStep(2); 
@@ -89,7 +87,7 @@ const MetadataManager = () => {
   const handleBack = () => { 
       setSearchTerm(""); 
       if(step===3){ setStep(2); setSelectedCollection(null); } 
-      else if(step===2){ setStep(1); setSelectedVideo(null); setFullMetadata(null); } 
+      else if(step===2){ setStep(1); setSelectedImage(null); setFullMetadata(null); } 
   };
 
   const openEditModal = (item) => {
@@ -112,59 +110,59 @@ const MetadataManager = () => {
         updateData: editingData
       };
       // Gọi đúng API endpoint cập nhật
-      const res = await axiosClient.put("/videos/update-metadata", payload);
+      const res = await axiosClient.put("/images/update-metadata", payload);
       if (res.data?.success) {
         alert("✅ Cập nhật thành công!");
         setIsEditModalOpen(false);
-        await handleSelectVideo(selectedVideo);
+        await handleSelectImage(selectedImage);
       } else { alert("⚠️ " + res.data.message); }
     } catch { alert("❌ Lỗi Server"); }
   };
 
-  const handleSoftDelete = async (video, e) => {
+  const handleSoftDelete = async (image, e) => {
     e.stopPropagation(); // Prevent row click
     
-    if (!window.confirm(`⚠️ Bạn có chắc muốn xóa video "${video.clip_name || 'Untitled'}"?\n\n` +
-      "Video sẽ được đánh dấu là đã xóa (soft delete) trong MongoDB, PostgreSQL và Neo4j.\n" +
-      "Bạn có thể xem lại trong mục 'Video đã xóa'.")) {
+    if (!window.confirm(`⚠️ Bạn có chắc muốn xóa hình ảnh "${image.image_name || 'Untitled'}"?\n\n` +
+      "Hình ảnh sẽ được đánh dấu là đã xóa (soft delete) trong MongoDB, PostgreSQL và Neo4j.\n" +
+      "Bạn có thể xem lại trong mục 'Hình ảnh đã xóa'.")) {
       return;
     }
 
     setLoading(true);
     try {
-      const res = await axiosClient.post(`/videos/${video._id}/soft-delete`);
+      const res = await axiosClient.post(`/images/${image._id}/soft-delete`);
       if (res.data?.success) {
-        alert("✅ Đã xóa video thành công!");
-        await fetchVideos(); // Refresh danh sách
+        alert("✅ Đã xóa hình ảnh thành công!");
+        await fetchImages(); // Refresh danh sách
       } else {
         alert("⚠️ " + res.data.message);
       }
     } catch (error) {
-      alert("❌ Lỗi khi xóa video: " + (error.response?.data?.message || error.message));
+      alert("❌ Lỗi khi xóa hình ảnh: " + (error.response?.data?.message || error.message));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRestore = async (video, e) => {
+  const handleRestore = async (image, e) => {
     e.stopPropagation(); // Prevent row click
     
-    if (!window.confirm(`✅ Bạn có chắc muốn khôi phục video "${video.clip_name || 'Untitled'}"?\n\n` +
-      "Video sẽ được khôi phục trong MongoDB, PostgreSQL và Neo4j.")) {
+    if (!window.confirm(`✅ Bạn có chắc muốn khôi phục hình ảnh "${image.image_name || 'Untitled'}"?\n\n` +
+      "Hình ảnh sẽ được khôi phục trong MongoDB, PostgreSQL và Neo4j.")) {
       return;
     }
 
     setLoading(true);
     try {
-      const res = await axiosClient.post(`/videos/${video._id}/restore`);
+      const res = await axiosClient.post(`/images/${image._id}/restore`);
       if (res.data?.success) {
-        alert("✅ Đã khôi phục video thành công!");
-        await fetchVideos(); // Refresh danh sách
+        alert("✅ Đã khôi phục hình ảnh thành công!");
+        await fetchImages(); // Refresh danh sách
       } else {
         alert("⚠️ " + res.data.message);
       }
     } catch (error) {
-      alert("❌ Lỗi khi khôi phục video: " + (error.response?.data?.message || error.message));
+      alert("❌ Lỗi khi khôi phục hình ảnh: " + (error.response?.data?.message || error.message));
     } finally {
       setLoading(false);
     }
@@ -204,17 +202,20 @@ const MetadataManager = () => {
   };
 
   // --- LOGIC LỌC DỮ LIỆU ---
-  const filteredVideos = videos.filter(v => {
+  const filteredImages = images.filter(v => {
       if (!searchTerm) return true;
       const term = searchTerm.toLowerCase();
-      const name = (v.clip_name || getFileNameFromUrl(v.minio_url)).toLowerCase();
+      const name = (v.image_name || getFileNameFromUrl(v.minio_url)).toLowerCase();
       // Sử dụng _id để lọc
       const id = v._id?.toLowerCase() || "";
       return name.includes(term) || id.includes(term);
   });
 
   const getFilteredData = () => {
-      const rawData = fullMetadata?.related_data[selectedCollection] || [];
+      // Nếu đang xem collection "image", lấy dữ liệu từ fullMetadata.image
+      const rawData = selectedCollection === 'image' 
+          ? (fullMetadata?.image ? [fullMetadata.image] : []) 
+          : (fullMetadata?.related_data[selectedCollection] || []);
       if (!searchTerm) return rawData;
       return rawData.filter(item => JSON.stringify(item).toLowerCase().includes(searchTerm.toLowerCase()));
   };
@@ -231,7 +232,7 @@ const MetadataManager = () => {
               Quản lý Metadata (Mongo)
             </h2>
             <p className="text-sm text-gray-500">
-                {step > 1 && selectedVideo && (selectedVideo.clip_name || getFileNameFromUrl(selectedVideo.minio_url))}
+                {step > 1 && selectedImage && (selectedImage.image_name || getFileNameFromUrl(selectedImage.minio_url))}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -245,7 +246,7 @@ const MetadataManager = () => {
                 }`}
               >
                 <Trash2 size={16} />
-                {showDeleted ? "Xem video thường" : "Video đã xóa"}
+                {showDeleted ? "Xem hình ảnh thường" : "Hình ảnh đã xóa"}
               </button>
             )}
             {step > 1 && (
@@ -256,12 +257,12 @@ const MetadataManager = () => {
           </div>
        </div>
 
-       {/* STEP 1: VIDEOS */}
+       {/* STEP 1: IMAGES */}
        {step === 1 && (
           <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
              <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                  <span className="font-bold text-gray-700 flex items-center gap-2">
-                   Danh sách Video ({filteredVideos.length})
+                   Danh sách Hình ảnh ({filteredImages.length})
                    {showDeleted && (
                      <span className="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full font-semibold">
                        Đã xóa
@@ -281,21 +282,21 @@ const MetadataManager = () => {
                 <thead className="bg-white border-b text-gray-500 text-xs uppercase">
                   <tr>
                     <th className="p-4">ID</th>
-                    <th className="p-4">Tên Clip</th>
+                    <th className="p-4">Tên Hình ảnh</th>
                     <th className="p-4">Hành động</th>
                     <th className="p-4"></th>
                   </tr>
                 </thead>
                 <tbody>
-                   {filteredVideos.length > 0 ? (
-                       filteredVideos.map(v => (
+                   {filteredImages.length > 0 ? (
+                       filteredImages.map(v => (
                           <tr key={v._id} className="hover:bg-indigo-50 border-b last:border-0 transition">
                              {/* HIỂN THỊ _id GỐC */}
                              <td className="p-4 text-indigo-600 font-mono font-bold text-sm">{v._id}</td>
                              <td className="p-4">
                                <div className="flex gap-2 items-center text-sm">
-                                 <FileVideo size={16} className="text-gray-400"/> 
-                                 {v.clip_name || getFileNameFromUrl(v.minio_url)}
+                                 <ImageIcon size={16} className="text-gray-400"/> 
+                                 {v.image_name || getFileNameFromUrl(v.minio_url)}
                                  {v.is_deleted && (
                                    <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
                                      <AlertCircle size={12} /> Đã xóa
@@ -320,7 +321,7 @@ const MetadataManager = () => {
                                  </button>
                                )}
                              </td>
-                             <td className="p-4 cursor-pointer" onClick={() => handleSelectVideo(v)}>
+                             <td className="p-4 cursor-pointer" onClick={() => handleSelectImage(v)}>
                                <ChevronRight size={18} className="text-gray-400"/>
                              </td>
                           </tr>
@@ -328,7 +329,7 @@ const MetadataManager = () => {
                    ) : (
                        <tr>
                          <td colSpan="4" className="p-8 text-center text-gray-400">
-                           {showDeleted ? "Không có video nào đã xóa." : "Không tìm thấy video nào."}
+                           {showDeleted ? "Không có hình ảnh nào đã xóa." : "Không tìm thấy hình ảnh nào."}
                          </td>
                        </tr>
                    )}
@@ -340,7 +341,25 @@ const MetadataManager = () => {
        {/* STEP 2: COLLECTIONS */}
        {step === 2 && fullMetadata && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-             {Object.keys(fullMetadata.related_data).map(name => (
+             {/* Hiển thị collection "image" đầu tiên */}
+             {fullMetadata.image && (
+               <div 
+                 key="image" 
+                 onClick={() => handleSelectCollection('image')} 
+                 className="bg-white p-6 rounded-xl border shadow-sm hover:border-indigo-400 cursor-pointer flex justify-between"
+               >
+                 <div className="flex gap-3 items-center">
+                   <ImageIcon className="text-indigo-600"/>
+                   <h3 className="capitalize font-bold">Image</h3>
+                 </div>
+                 <span className="text-xs text-gray-500">1 row</span>
+               </div>
+             )}
+             
+             {/* Hiển thị các collection khác */}
+             {Object.keys(fullMetadata.related_data)
+               .filter(name => !['segment', 'interaction'].includes(name))
+               .map(name => (
                 <div key={name} onClick={() => handleSelectCollection(name)} className="bg-white p-6 rounded-xl border shadow-sm hover:border-indigo-400 cursor-pointer flex justify-between">
                    <div className="flex gap-3 items-center"><Layers className="text-indigo-600"/><h3 className="capitalize font-bold">{name}</h3></div>
                    <span className="text-xs text-gray-500">{fullMetadata.related_data[name]?.length} rows</span>
@@ -355,7 +374,9 @@ const MetadataManager = () => {
           <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
              <div className="flex items-center gap-2">
                  <h3 className="font-bold text-gray-700 uppercase">Collection: {selectedCollection}</h3>
-                 <span className="text-xs bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-mono">Total: {fullMetadata.related_data[selectedCollection]?.length || 0}</span>
+                 <span className="text-xs bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-mono">
+                   Total: {selectedCollection === 'image' ? 1 : (fullMetadata.related_data[selectedCollection]?.length || 0)}
+                 </span>
              </div>
              <div className="relative w-full md:w-80">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />

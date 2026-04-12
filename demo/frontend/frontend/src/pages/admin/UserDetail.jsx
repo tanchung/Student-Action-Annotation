@@ -213,7 +213,7 @@ const UserDetail = () => {
                   disabled={!isEditing}
                   className={`w-full p-3 border rounded-lg outline-none transition ${isEditing ? 'bg-white' : 'bg-gray-50 appearance-none'}`}
                 >
-                  <option value="user">Học sinh (User)</option>
+                  <option value="user">Người dùng (User)</option>
                   <option value="admin">Quản trị viên (Admin)</option>
                 </select>
               </div>

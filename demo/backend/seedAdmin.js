@@ -15,34 +15,26 @@ const seedAdmin = async () => {
         const username = "admin"; // Giữ nguyên là admin
         const passwordRaw = "123456";
 
-        // 2. Mã hóa mật khẩu
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(passwordRaw, salt);
-
-        // 3. Tìm xem admin cũ có không
+        // 2. Tìm xem admin cũ có không
         const existingAdmin = await User.findOne({ username });
 
         if (existingAdmin) {
-            // === NẾU ĐÃ CÓ -> CẬP NHẬT PASS MỚI ===
-            console.log(`⚠️ User '${username}' đã tồn tại -> Đang reset mật khẩu...`);
-            
-            existingAdmin.password = hashedPassword;
-            existingAdmin.role = "admin"; // Đảm bảo role chuẩn
-            await existingAdmin.save();
-            
-            console.log("✅ Đã đổi mật khẩu thành công!");
-        } else {
-            // === NẾU CHƯA CÓ -> TẠO MỚI ===
-            const newAdmin = new User({
-                username,
-                password: hashedPassword,
-                full_name: "Super Administrator",
-                email: "admin@classroom.kg",
-                role: "admin"
-            });
-            await newAdmin.save();
-            console.log("🎉 Đã tạo Admin mới thành công!");
+            // === NẾU ĐÃ CÓ -> XÓA VÀ TẠO LẠI ===
+            console.log(`⚠️ User '${username}' đã tồn tại -> Đang xóa và tạo lại...`);
+            await User.deleteOne({ username });
+            console.log("🗑️ Đã xóa admin cũ!");
         }
+        
+        // === TẠO ADMIN MỚI (pre-save hook sẽ tự động hash password) ===
+        const newAdmin = new User({
+            username,
+            password: passwordRaw, // Để password thô, pre-save hook sẽ hash
+            full_name: "Super Administrator",
+            email: "admin@classroom.kg",
+            role: "admin"
+        });
+        await newAdmin.save();
+        console.log("🎉 Đã tạo Admin mới thành công!");
 
         console.log("-----------------------------------");
         console.log(`👉 Username: ${username}`);

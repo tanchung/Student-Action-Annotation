@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
-  Video, Grid, List, Filter, Calendar, Trash2, Eye, Edit3,
-  Search, MoreVertical, Clock, CheckCircle2, AlertCircle, AlertTriangle,
+  Image as ImageIcon, Grid, List, Filter, Calendar, Trash2, Eye, Edit3,
+  Search, MoreVertical, CheckCircle2, AlertCircle, AlertTriangle,
   Loader, ChevronDown, X, Sparkles, ChevronLeft, ChevronRight, Network
 } from "lucide-react";
+import Footer from "../../components/Footer";
 import Header from "../../components/Header";
 import axiosClient from "../../api/axiosClient";
-
 import GraphModal from "../../components/GraphModal";
 
 const normalizeStatus = (status) => (status || "").toLowerCase();
@@ -15,64 +15,200 @@ const isUploadedStatus = (status) => normalizeStatus(status) === "uploaded";
 const isProcessingStatus = (status) => normalizeStatus(status) === "processing";
 const isDoneStatus = (status) => ["done", "completed"].includes(normalizeStatus(status));
 const isErrorStatus = (status) => ["error", "failed"].includes(normalizeStatus(status));
-const isPipelineExitSuccess = (video) => Number(video?.ai_pipeline_exit_code) === 0;
-const isLegacyDoneVideo = (video) => (
-  isDoneStatus(video?.status) &&
-  video?.ai_pipeline_exit_code == null &&
-  !video?.processing_started_at &&
-  !!video?.processed_at
+const isPipelineExitSuccess = (image) => Number(image?.ai_pipeline_exit_code) === 0;
+const isLegacyDoneImage = (image) => (
+  isDoneStatus(image?.status) &&
+  image?.ai_pipeline_exit_code == null &&
+  !image?.processing_started_at &&
+  !!image?.processed_at
 );
-const canAnnotateVideo = (video) => isDoneStatus(video?.status) && (isPipelineExitSuccess(video) || isLegacyDoneVideo(video));
-const needsCaptionReview = (video) => Boolean(video?.caption_review_required || video?.caption_regeneration_required);
-const getCaptionConfidence = (video) => {
-  const raw = video?.caption_confidence ?? video?.confidence_score;
+const canAnnotateImage = (image) => isDoneStatus(image?.status) && (isPipelineExitSuccess(image) || isLegacyDoneImage(image));
+const needsCaptionReview = (image) => Boolean(image?.caption_review_required || image?.caption_regeneration_required);
+const getCaptionConfidence = (image) => {
+  const raw = image?.caption_confidence ?? image?.confidence_score;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
 };
 
-const MyVideos = () => {
+const MyImages = () => {
   const navigate = useNavigate();
   
-  const [videos, setVideos] = useState([]);
-  const [filteredVideos, setFilteredVideos] = useState([]);
+  const [images, setImages] = useState([]);
+  const [filteredImages, setFilteredImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState("grid"); // "grid" or "list"
+  const [previousImages, setPreviousImages] = useState([]); // Track previous state
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const videosPerPage = 8;
+  const imagesPerPage = 12;
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // all, uploaded, processing, done, error
   const [dateFilter, setDateFilter] = useState("all"); // all, today, week, month
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+
   // Graph Modal
   const [graphModalOpen, setGraphModalOpen] = useState(false);
   const [graphData, setGraphData] = useState(null);
-  const [selectedVideoForGraph, setSelectedVideoForGraph] = useState(null);
+  const [selectedImageForGraph, setSelectedImageForGraph] = useState(null);
 
   useEffect(() => {
-    fetchVideos();
+    fetchImages();
   }, []);
 
   useEffect(() => {
-    const hasProcessingVideo = videos.some((video) => isProcessingStatus(video.status));
-    if (!hasProcessingVideo) return;
+    applyFilters();
+    setCurrentPage(1); // Reset về trang 1 khi filter thay đổi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [images, searchQuery, statusFilter, dateFilter]);
 
-    const intervalId = setInterval(() => {
-      fetchVideos({ silent: true });
-    }, 3000);
+  // Auto-refresh when there are processing images
+  useEffect(() => {
+    const hasProcessing = images.some((img) => isProcessingStatus(img.status));
+    if (!hasProcessing) return;
 
-    return () => clearInterval(intervalId);
-  }, [videos]);
+    const interval = setInterval(() => {
+      console.log('🔄 Auto-refreshing images (processing detected)...');
+      fetchImages({ silent: true });
+    }, 3000); // Refresh every 3 seconds
 
-  const handleViewGraph = async (videoId, videoName) => {
+    return () => clearInterval(interval);
+  }, [images]);
+
+  // Detect status changes from processing to error and show alert
+  useEffect(() => {
+    if (previousImages.length === 0) {
+      setPreviousImages(images);
+      return;
+    }
+
+    images.forEach(currentImage => {
+      const prevImage = previousImages.find(img => img._id === currentImage._id);
+      
+      // Check if status changed from processing to error
+      if (prevImage && prevImage.status === 'processing' && currentImage.status === 'error') {
+        console.log('⚠️ Detected error for image:', currentImage.image_name);
+        if (currentImage.error_message) {
+          alert("⚠️ " + currentImage.error_message);
+        } else {
+          alert("⚠️ Xử lý AI thất bại. Vui lòng thử lại.");
+        }
+      }
+    });
+
+    setPreviousImages(images);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [images]);
+
+  const fetchImages = async ({ silent = false } = {}) => {
     try {
-      setSelectedVideoForGraph(videoName);
+      if (!silent) setLoading(true);
+      const res = await axiosClient.get("/images/list");
+      if (res.data?.success) {
+        setImages(res.data.data || []);
+      }
+    } catch (err) {
+      console.error("Error fetching images:", err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  const applyFilters = () => {
+    let filtered = [...images];
+
+    // Search filter
+    if (searchQuery) {
+      filtered = filtered.filter(img => 
+        img.image_name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((img) => {
+        if (statusFilter === "done") return isDoneStatus(img.status);
+        if (statusFilter === "error") return isErrorStatus(img.status);
+        return normalizeStatus(img.status) === statusFilter;
+      });
+    }
+
+    // Date filter
+    if (dateFilter !== "all") {
+      const now = new Date();
+      filtered = filtered.filter(img => {
+        const imageDate = new Date(img.created_at);
+        const diffDays = Math.floor((now - imageDate) / (1000 * 60 * 60 * 24));
+        
+        if (dateFilter === "today") return diffDays === 0;
+        if (dateFilter === "week") return diffDays <= 7;
+        if (dateFilter === "month") return diffDays <= 30;
+        return true;
+      });
+    }
+
+    setFilteredImages(filtered);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Bạn có chắc muốn xóa hình ảnh này?")) return;
+    
+    try {
+      await axiosClient.post(`/images/${id}/soft-delete`);
+      alert("✅ Đã xóa hình ảnh thành công!");
+      fetchImages();
+    } catch (err) {
+      alert("❌ Lỗi khi xóa hình ảnh!");
+      console.error(err);
+    }
+  };
+
+  const handleRunAI = async (imageId) => {
+    if (!window.confirm("Bạn có muốn phân tích hình ảnh này bằng AI không?")) return;
+    
+    try {
+      // Update status optimistically
+      setImages(prevImages => 
+        prevImages.map(img => 
+          img._id === imageId
+            ? {
+                ...img,
+                status: 'processing',
+                ai_pipeline_exit_code: null,
+                ai_pipeline_finished_at: null,
+                processing_started_at: new Date().toISOString(),
+              }
+            : img
+        )
+      );
+
+      const response = await axiosClient.post(`/images/${imageId}/analyze`);
+      
+      // Show success message
+      if (response.data?.success) {
+        alert("✨ Đang phân tích hình ảnh bằng AI! Hệ thống sẽ tự động cập nhật và thông báo kết quả.");
+      }
+      
+      // Fetch immediately to get latest status
+      await fetchImages({ silent: true });
+      
+    } catch (err) {
+      console.error('AI Analysis Error:', err);
+      const errorMsg = err.response?.data?.message || "Lỗi khi gọi AI phân tích!";
+      alert("❌ " + errorMsg);
+      // Revert optimistic update
+      fetchImages({ silent: true });
+    }
+  };
+
+  const handleViewGraph = async (imageId, imageName) => {
+    try {
+      setSelectedImageForGraph(imageName);
       setGraphModalOpen(true);
       
-      const response = await axiosClient.get(`/videos/${videoId}/neo4j`);
+      const response = await axiosClient.get(`/images/${imageId}/neo4j`);
       
       if (response.data?.success && response.data?.data) {
         setGraphData(response.data.data);
@@ -87,109 +223,11 @@ const MyVideos = () => {
     }
   };
 
-  useEffect(() => {
-    applyFilters();
-    setCurrentPage(1); // Reset về trang 1 khi filter thay đổi
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videos, searchQuery, statusFilter, dateFilter]);
-
-  const fetchVideos = async ({ silent = false } = {}) => {
-    try {
-      if (!silent) setLoading(true);
-      const res = await axiosClient.get("/videos/list");
-      if (res.data?.success) {
-        setVideos(res.data.data || []);
-      }
-    } catch (err) {
-      console.error("Error fetching videos:", err);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  const applyFilters = () => {
-    let filtered = [...videos];
-
-    // Search filter
-    if (searchQuery) {
-      filtered = filtered.filter(v => 
-        v.clip_name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Status filter
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((v) => {
-        if (statusFilter === "done") return isDoneStatus(v.status);
-        if (statusFilter === "error") return isErrorStatus(v.status);
-        return normalizeStatus(v.status) === statusFilter;
-      });
-    }
-
-    // Date filter
-    if (dateFilter !== "all") {
-      const now = new Date();
-      filtered = filtered.filter(v => {
-        const videoDate = new Date(v.created_at);
-        const diffDays = Math.floor((now - videoDate) / (1000 * 60 * 60 * 24));
-        
-        if (dateFilter === "today") return diffDays === 0;
-        if (dateFilter === "week") return diffDays <= 7;
-        if (dateFilter === "month") return diffDays <= 30;
-        return true;
-      });
-    }
-
-    setFilteredVideos(filtered);
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm("Bạn có chắc muốn xóa video này?")) return;
-    
-    try {
-      await axiosClient.delete(`/videos/${id}`);
-      alert("✅ Đã xóa video thành công!");
-      fetchVideos();
-    } catch (err) {
-      alert("❌ Lỗi khi xóa video!");
-      console.error(err);
-    }
-  };
-
-  const handleRunAI = async (videoId) => {
-    if (!window.confirm("Bạn có muốn phân tích video này bằng AI không?")) return;
-    
-    try {
-      await axiosClient.post(`/videos/${videoId}/analyze`);
-
-      setVideos((prevVideos) =>
-        prevVideos.map((video) =>
-          video._id === videoId
-            ? {
-                ...video,
-                status: "processing",
-                ai_pipeline_exit_code: null,
-                ai_pipeline_finished_at: null,
-                processing_started_at: new Date().toISOString(),
-              }
-            : video
-        )
-      );
-
-      alert("✨ Đang gửi video để AI phân tích! Vui lòng đợi vài phút.");
-      fetchVideos({ silent: true });
-    } catch (err) {
-      alert("❌ Lỗi khi gọi AI phân tích!");
-      console.error(err);
-      fetchVideos({ silent: true });
-    }
-  };
-
   // Pagination calculations
-  const totalPages = Math.ceil(filteredVideos.length / videosPerPage);
-  const indexOfLastVideo = currentPage * videosPerPage;
-  const indexOfFirstVideo = indexOfLastVideo - videosPerPage;
-  const currentVideos = filteredVideos.slice(indexOfFirstVideo, indexOfLastVideo);
+  const totalPages = Math.ceil(filteredImages.length / imagesPerPage);
+  const indexOfLastImage = currentPage * imagesPerPage;
+  const indexOfFirstImage = indexOfLastImage - imagesPerPage;
+  const currentImages = filteredImages.slice(indexOfFirstImage, indexOfLastImage);
 
   const goToPage = (pageNumber) => {
     setCurrentPage(pageNumber);
@@ -212,7 +250,7 @@ const MyVideos = () => {
 
   const getStatusBadge = (status) => {
     const statusConfig = {
-      uploaded: { bg: "bg-gray-100", text: "text-gray-600", icon: Clock, label: "Uploaded" },
+      uploaded: { bg: "bg-gray-100", text: "text-gray-600", icon: CheckCircle2, label: "Uploaded" },
       processing: { bg: "bg-blue-100", text: "text-blue-600", icon: Loader, label: "Processing" },
       done: { bg: "bg-green-100", text: "text-green-600", icon: CheckCircle2, label: "Completed" },
       completed: { bg: "bg-green-100", text: "text-green-600", icon: CheckCircle2, label: "Completed" },
@@ -220,7 +258,7 @@ const MyVideos = () => {
       failed: { bg: "bg-red-100", text: "text-red-600", icon: AlertCircle, label: "Failed" }
     };
 
-    const config = statusConfig[(status || "").toLowerCase()] || statusConfig.uploaded;
+    const config = statusConfig[normalizeStatus(status)] || statusConfig.uploaded;
     const Icon = config.icon;
 
     return (
@@ -242,17 +280,24 @@ const MyVideos = () => {
     });
   };
 
+  const formatFileSize = (bytes) => {
+    if (!bytes) return "N/A";
+    if (bytes < 1024) return bytes + " B";
+    else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    else return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 text-gray-800 font-sans flex flex-col">
       
-      <Header activePage="my-videos" />
+      <Header activePage="my-images" />
 
       <main className="flex-1 max-w-[1400px] w-full mx-auto p-6 md:p-8 pt-28">
         
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Videos</h1>
-          <p className="text-gray-500">Quản lý và phân tích video của bạn</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Images</h1>
+          <p className="text-gray-500">Quản lý và phân tích hình ảnh của bạn</p>
         </div>
 
         {/* TOOLBAR */}
@@ -264,7 +309,7 @@ const MyVideos = () => {
               <Search size={18} className="text-gray-400 mr-2"/>
               <input 
                 type="text" 
-                placeholder="Tìm kiếm video..." 
+                placeholder="Tìm kiếm hình ảnh..." 
                 className="bg-transparent outline-none text-sm w-full"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -364,45 +409,52 @@ const MyVideos = () => {
         {/* RESULTS INFO */}
         <div className="mb-4 flex items-center justify-between">
           <p className="text-sm text-gray-500">
-            Hiển thị <span className="font-bold text-gray-900">{currentVideos.length}</span> / {filteredVideos.length} video
+            Hiển thị <span className="font-bold text-gray-900">{currentImages.length}</span> / {filteredImages.length} hình ảnh
             {totalPages > 1 && <span className="ml-2 text-gray-400">(Trang {currentPage}/{totalPages})</span>}
           </p>
         </div>
 
-        {/* VIDEO LIST/GRID */}
+        {/* IMAGE LIST/GRID */}
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
-            {[1,2,3,4,5,6].map(i => <div key={i} className="bg-gray-200 h-64 rounded-xl"></div>)}
+            {[1,2,3,4,5,6,7,8].map(i => <div key={i} className="bg-gray-200 h-64 rounded-xl"></div>)}
           </div>
-        ) : filteredVideos.length > 0 ? (
+        ) : filteredImages.length > 0 ? (
           viewMode === "grid" ? (
             // GRID VIEW
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {currentVideos.map((video) => (
-                <div key={video._id} className="group bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-xl hover:border-indigo-300 transition-all duration-300">
+              {currentImages.map((image) => (
+                <div key={image._id} className="group bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-xl hover:border-indigo-300 transition-all duration-300">
                   
-                  {/* Thumbnail */}
+                  {/* Image Preview */}
                   <div 
-                    onClick={() => navigate(`/video/${video._id}`)}
+                    onClick={() => navigate(`/image/${image._id}`)}
                     className="relative h-44 bg-gray-100 flex items-center justify-center overflow-hidden cursor-pointer"
                   >
-                    {video.thumbnail_url ? (
+                    {image.minio_url ? (
                       <img 
-                        src={video.thumbnail_url} 
-                        alt={video.clip_name} 
+                        src={image.minio_url} 
+                        alt={image.image_name} 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
                       />
                     ) : (
                       <div className="flex flex-col items-center text-gray-400">
-                        <Video size={32} className="mb-2 opacity-50"/>
+                        <ImageIcon size={32} className="mb-2 opacity-50"/>
                         <span className="text-xs font-medium">No Preview</span>
                       </div>
                     )}
                     
-                    {/* Duration Badge */}
-                    {video.duration > 0 && (
-                      <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <Clock size={10} /> {video.duration}s
+                    {/* Format Badge */}
+                    {image.format && (
+                      <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
+                        {image.format}
+                      </div>
+                    )}
+
+                    {/* Dimensions Badge */}
+                    {image.width && image.height && (
+                      <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                        {image.width} × {image.height}
                       </div>
                     )}
 
@@ -418,120 +470,122 @@ const MyVideos = () => {
 
                   {/* Info */}
                   <div className="p-4">
-                    <h3 className="font-bold text-gray-800 text-sm line-clamp-1 mb-2" title={video.clip_name}>
-                      {video.clip_name || "Untitled Video"}
+                    <h3 className="font-bold text-gray-800 text-sm line-clamp-1 mb-2" title={image.image_name}>
+                      {image.image_name || "Untitled Image"}
                     </h3>
                     
                     <div className="flex items-center justify-between mb-3">
-                      {getStatusBadge(video.status)}
+                      {getStatusBadge(image.status)}
                       <span className="text-xs text-gray-400">
-                        {formatDate(video.created_at)}
+                        {formatDate(image.created_at)}
                       </span>
                     </div>
 
-                    {needsCaptionReview(video) && (
+                    {needsCaptionReview(image) && (
                       <div className="mb-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold">
                         <AlertTriangle size={12} />
-                        Caption cần kiểm tra{getCaptionConfidence(video) !== null ? ` (${getCaptionConfidence(video)}%)` : ""}
+                        Caption cần kiểm tra{getCaptionConfidence(image) !== null ? ` (${getCaptionConfidence(image)}%)` : ""}
                       </div>
+                    )}
+
+                    {/* File size */}
+                    {image.file_size && (
+                      <p className="text-xs text-gray-500 mb-3">
+                        {formatFileSize(image.file_size)}
+                      </p>
                     )}
 
                     {/* Actions */}
                     <div className="flex gap-2">
-                      {isUploadedStatus(video.status) ? (
-                        // Trạng thái UPLOADED: Hiện View, Run AI và Delete
+                      {isUploadedStatus(image.status) ? (
                         <>
                           <button 
-                            onClick={() => navigate(`/video/${video._id}`)}
+                            onClick={() => navigate(`/image/${image._id}`)}
                             className="flex-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition flex items-center justify-center gap-1"
                           >
                             <Eye size={14} /> View
                           </button>
                           <button 
-                            onClick={() => handleRunAI(video._id)}
+                            onClick={() => handleRunAI(image._id)}
                             className="flex-1 px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-xs font-bold hover:from-indigo-700 hover:to-purple-700 transition flex items-center justify-center gap-1.5 shadow-md"
                           >
                             <Sparkles size={14} />
                           </button>
                           <button 
-                            onClick={() => handleDelete(video._id)}
+                            onClick={() => handleDelete(image._id)}
                             className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition"
                           >
                             <Trash2 size={14} />
                           </button>
                         </>
-                      ) : isProcessingStatus(video.status) ? (
-                        // Trạng thái PROCESSING: Hiện text đang phân tích, khóa mọi thao tác
+                      ) : isProcessingStatus(image.status) ? (
                         <div className="w-full px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5">
                           <Loader size={14} className="animate-spin" /> Đang phân tích...
                         </div>
-                      ) : isErrorStatus(video.status) ? (
-                        // Trạng thái ERROR/FAILED: Hiện View, Run AI lại và Delete
+                      ) : isErrorStatus(image.status) ? (
                         <>
                           <button 
-                            onClick={() => navigate(`/video/${video._id}`)}
+                            onClick={() => navigate(`/image/${image._id}`)}
                             className="flex-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition flex items-center justify-center gap-1"
                           >
                             <Eye size={14} /> View
                           </button>
                           <button 
-                            onClick={() => handleRunAI(video._id)}
+                            onClick={() => handleRunAI(image._id)}
                             className="flex-1 px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-xs font-bold hover:from-indigo-700 hover:to-purple-700 transition flex items-center justify-center gap-1.5 shadow-md"
+                            title="Thử lại xử lí AI"
                           >
-                            <Sparkles size={14} />
+                            <Sparkles size={14} /> AI
                           </button>
                           <button 
-                            onClick={() => handleDelete(video._id)}
-                            className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition"
+                            onClick={() => handleDelete(image._id)}
+                            className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition"
                           >
                             <Trash2 size={14} />
                           </button>
                         </>
-                      ) : canAnnotateVideo(video) ? (
-                        // Trạng thái DONE/COMPLETED: Hiện View, Annotate, Delete
+                      ) : canAnnotateImage(image) ? (
                         <>
                           <button 
-                            onClick={() => navigate(`/video/${video._id}`)}
+                            onClick={() => navigate(`/image/${image._id}`)}
                             className="flex-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition flex items-center justify-center gap-1"
                           >
                             <Eye size={14} /> View
                           </button>
                           <button 
-                            onClick={() => handleViewGraph(video._id, video.clip_name)}
+                            onClick={() => handleViewGraph(image._id, image.image_name)}
                             className="flex-1 px-3 py-1.5 bg-cyan-50 text-cyan-600 rounded-lg text-xs font-semibold hover:bg-cyan-100 transition flex items-center justify-center gap-1"
                             title="Xem graph từ Neo4j"
                           >
                             <Network size={14} /> Graph
                           </button>
                           <button 
-                            onClick={() => navigate(`/video-annotation/${video._id}`)}
+                            onClick={() => navigate(`/annotation-studio/${image._id}`)}
                             className="flex-1 px-3 py-1.5 bg-green-50 text-green-600 rounded-lg text-xs font-semibold hover:bg-green-100 transition flex items-center justify-center gap-1"
                           >
                             <Edit3 size={14} /> Annotate
                           </button>
                           <button 
-                            onClick={() => handleDelete(video._id)}
+                            onClick={() => handleDelete(image._id)}
                             className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition"
                           >
                             <Trash2 size={14} />
                           </button>
                         </>
-                      ) : isDoneStatus(video.status) ? (
-                        // Trạng thái DONE nhưng chưa xác nhận exit code = 0: giữ ở trạng thái chờ
+                      ) : isDoneStatus(image.status) ? (
                         <div className="w-full px-3 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5">
                           <Loader size={14} className="animate-spin" /> Chờ xác nhận...
                         </div>
                       ) : (
-                        // Trạng thái fallback: Hiện View và Delete
                         <>
                           <button 
-                            onClick={() => navigate(`/video/${video._id}`)}
+                            onClick={() => navigate(`/image/${image._id}`)}
                             className="flex-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition flex items-center justify-center gap-1"
                           >
                             <Eye size={14} /> View
                           </button>
                           <button 
-                            onClick={() => handleDelete(video._id)}
+                            onClick={() => handleDelete(image._id)}
                             className="flex-1 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition"
                           >
                             <Trash2 size={14} />
@@ -549,147 +603,141 @@ const MyVideos = () => {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    <th className="px-6 py-4">Video</th>
+                    <th className="px-6 py-4">Hình ảnh</th>
                     <th className="px-6 py-4">Trạng thái</th>
-                    <th className="px-6 py-4">Thời lượng</th>
+                    <th className="px-6 py-4">Kích thước</th>
                     <th className="px-6 py-4">Ngày tạo</th>
                     <th className="px-6 py-4 text-right">Hành động</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {currentVideos.map((video) => (
-                    <tr key={video._id} className="hover:bg-gray-50 transition">
+                  {currentImages.map((image) => (
+                    <tr key={image._id} className="hover:bg-gray-50 transition">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-16 h-12 bg-gray-100 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
-                            {video.thumbnail_url ? (
-                              <img src={video.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                            {image.minio_url ? (
+                              <img src={image.minio_url} alt="" className="w-full h-full object-cover" />
                             ) : (
-                              <Video size={20} className="text-gray-400" />
+                              <ImageIcon size={20} className="text-gray-400" />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{video.clip_name}</p>
-                            <p className="text-xs text-gray-500">{video._id}</p>
+                            <p className="font-medium text-gray-900 truncate">{image.image_name}</p>
+                            <p className="text-xs text-gray-500">{image.format?.toUpperCase()} • {formatFileSize(image.file_size)}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col items-start gap-2">
-                          {getStatusBadge(video.status)}
-                          {needsCaptionReview(video) && (
+                          {getStatusBadge(image.status)}
+                          {needsCaptionReview(image) && (
                             <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold">
                               <AlertTriangle size={12} />
-                              Cần kiểm tra caption{getCaptionConfidence(video) !== null ? ` (${getCaptionConfidence(video)}%)` : ""}
+                              Cần kiểm tra caption{getCaptionConfidence(image) !== null ? ` (${getCaptionConfidence(image)}%)` : ""}
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {video.duration > 0 ? `${video.duration}s` : "N/A"}
+                        {image.width && image.height ? `${image.width} × ${image.height}` : "N/A"}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {formatDate(video.created_at)}
+                        {formatDate(image.created_at)}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
-                          {isUploadedStatus(video.status) ? (
-                            // Trạng thái UPLOADED: Chỉ hiện nút Run AI và Delete
+                          {isUploadedStatus(image.status) ? (
                             <>
                               <button 
-                                onClick={() => handleRunAI(video._id)}
+                                onClick={() => handleRunAI(image._id)}
                                 className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-xs font-bold hover:from-indigo-700 hover:to-purple-700 transition flex items-center gap-1.5"
                                 title="Phân tích bằng AI"
                               >
                                 <Sparkles size={14} /> Phân tích
                               </button>
                               <button 
-                                onClick={() => handleDelete(video._id)}
+                                onClick={() => handleDelete(image._id)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
                                 title="Xóa"
                               >
                                 <Trash2 size={16} />
                               </button>
                             </>
-                          ) : isProcessingStatus(video.status) ? (
-                            // Trạng thái PROCESSING
+                          ) : isProcessingStatus(image.status) ? (
                             <div className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-semibold flex items-center gap-1.5">
                               <Loader size={14} className="animate-spin" /> Đang phân tích...
                             </div>
-                          ) : isErrorStatus(video.status) ? (
-                            // Trạng thái ERROR/FAILED: View, Run AI lại, Delete
+                          ) : isErrorStatus(image.status) ? (
                             <>
                               <button 
-                                onClick={() => navigate(`/video/${video._id}`)}
+                                onClick={() => navigate(`/image/${image._id}`)}
                                 className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
                                 title="Xem chi tiết"
                               >
                                 <Eye size={16} />
                               </button>
                               <button 
-                                onClick={() => handleRunAI(video._id)}
-                                className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-xs font-bold hover:from-indigo-700 hover:to-purple-700 transition flex items-center gap-1.5"
-                                title="Chạy lại AI"
+                                onClick={() => handleRunAI(image._id)}
+                                className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition"
+                                title="Thử lại xử lí AI"
                               >
-                                <Sparkles size={14} /> Retry
+                                <Sparkles size={16} />
                               </button>
                               <button 
-                                onClick={() => handleDelete(video._id)}
+                                onClick={() => handleDelete(image._id)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
                                 title="Xóa"
                               >
                                 <Trash2 size={16} />
                               </button>
                             </>
-                          ) : canAnnotateVideo(video) ? (
-                            // Trạng thái DONE/COMPLETED
+                          ) : canAnnotateImage(image) ? (
                             <>
                               <button 
-                                onClick={() => navigate(`/video/${video._id}`)}
+                                onClick={() => navigate(`/image/${image._id}`)}
                                 className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
                                 title="Xem chi tiết"
                               >
                                 <Eye size={16} />
                               </button>
                               <button 
-                                onClick={() => handleViewGraph(video._id, video.clip_name)}
+                                onClick={() => handleViewGraph(image._id, image.image_name)}
                                 className="p-2 text-cyan-600 hover:bg-cyan-50 rounded-lg transition"
                                 title="Xem graph từ Neo4j"
                               >
                                 <Network size={16} />
                               </button>
                               <button 
-                                onClick={() => navigate(`/video-annotation/${video._id}`)}
+                                onClick={() => navigate(`/annotation-studio/${image._id}`)}
                                 className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
                                 title="Annotate"
                               >
                                 <Edit3 size={16} />
                               </button>
                               <button 
-                                onClick={() => handleDelete(video._id)}
+                                onClick={() => handleDelete(image._id)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
                                 title="Xóa"
                               >
                                 <Trash2 size={16} />
                               </button>
                             </>
-                          ) : isDoneStatus(video.status) ? (
-                            // Trạng thái DONE nhưng chưa xác nhận exit code = 0
+                          ) : isDoneStatus(image.status) ? (
                             <div className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-semibold flex items-center gap-1.5">
                               <Loader size={14} className="animate-spin" /> Chờ xác nhận...
                             </div>
                           ) : (
-                            // Trạng thái fallback
                             <>
                               <button 
-                                onClick={() => navigate(`/video/${video._id}`)}
+                                onClick={() => navigate(`/image/${image._id}`)}
                                 className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
                                 title="Xem chi tiết"
                               >
                                 <Eye size={16} />
                               </button>
                               <button 
-                                onClick={() => handleDelete(video._id)}
+                                onClick={() => handleDelete(image._id)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
                                 title="Xóa"
                               >
@@ -708,25 +756,25 @@ const MyVideos = () => {
         ) : (
           // EMPTY STATE
           <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-300">
-            <Video size={48} className="mx-auto mb-4 text-gray-300" />
-            <p className="text-gray-500 text-lg mb-2">Không tìm thấy video nào</p>
-            <p className="text-gray-400 text-sm mb-4">Thử thay đổi bộ lọc hoặc upload video từ Dashboard</p>
+            <ImageIcon size={48} className="mx-auto mb-4 text-gray-300" />
+            <p className="text-gray-500 text-lg mb-2">Không tìm thấy hình ảnh nào</p>
+            <p className="text-gray-400 text-sm mb-4">Thử thay đổi bộ lọc hoặc upload hình ảnh mới</p>
             <button 
               onClick={() => navigate("/dashboard")}
               className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
             >
-              Đi tới Dashboard Upload
+              Upload Image
             </button>
           </div>
         )}
 
         {/* PAGINATION */}
-        {filteredVideos.length > videosPerPage && (
+        {filteredImages.length > imagesPerPage && (
           <div className="mt-8 flex items-center justify-between bg-white rounded-2xl border border-gray-200 p-6">
             <div className="text-sm text-gray-600">
-              Hiển thị <span className="font-semibold text-gray-900">{indexOfFirstVideo + 1}</span> -{" "}
-              <span className="font-semibold text-gray-900">{Math.min(indexOfLastVideo, filteredVideos.length)}</span> trong tổng số{" "}
-              <span className="font-semibold text-gray-900">{filteredVideos.length}</span> video
+              Hiển thị <span className="font-semibold text-gray-900">{indexOfFirstImage + 1}</span> -{" "}
+              <span className="font-semibold text-gray-900">{Math.min(indexOfLastImage, filteredImages.length)}</span> trong tổng số{" "}
+              <span className="font-semibold text-gray-900">{filteredImages.length}</span> hình ảnh
             </div>
             
             <div className="flex items-center gap-2">
@@ -746,7 +794,6 @@ const MyVideos = () => {
               {/* Page Numbers */}
               <div className="flex items-center gap-1">
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNumber) => {
-                  // Hiển thị: trang đầu, trang cuối, trang hiện tại, và các trang lân cận
                   if (
                     pageNumber === 1 ||
                     pageNumber === totalPages ||
@@ -797,16 +844,17 @@ const MyVideos = () => {
 
       </main>
 
-      <GraphModal
+      {/* Graph Modal */}
+      <GraphModal 
         isOpen={graphModalOpen}
         onClose={() => setGraphModalOpen(false)}
         data={graphData}
-        title={`Video Graph - ${selectedVideoForGraph || "Loading"}`}
+        title={`Image Graph - ${selectedImageForGraph || "Loading"}`}
       />
 
-      
+      <Footer />
     </div>
   );
 };
 
-export default MyVideos;
+export default MyImages;

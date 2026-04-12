@@ -86,7 +86,7 @@ export default function UserManager({ roleType = "user", pageTitle = "Quản lý
             <div>
               <h2 className="text-xl font-semibold text-gray-700">{pageTitle}</h2>
               <p className="text-sm text-gray-500">
-                 Danh sách {roleType === 'admin' ? 'Quản trị viên' : 'Học sinh'}
+                 Danh sách {roleType === 'admin' ? 'Quản trị viên' : 'Người dùng'}
               </p>
             </div>
           </div>

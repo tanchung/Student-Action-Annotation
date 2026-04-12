@@ -1,0 +1,480 @@
+CHUONG 1: TONG QUAN
+
+1.1. Gioi thieu
+Chuong nay tap trung gioi thieu khung ly thuyet va phan tich cac cong trinh nen tang lien quan den bai toan sinh mo ta video dua tren Do thi canh (Scene Graph). Thong qua viec danh gia cac huong nghien cuu tieu bieu, chuong lam ro cac ket qua da dat duoc va cac han che con ton tai, tu do xac dinh khoang trong khoa hoc cho bai toan lop hoc.
+
+Tren co so do, de tai dat ra bai toan cu the: tu anh/video lop hoc, he thong can tu dong phat hien doi tuong - hanh dong, theo doi doi tuong theo thoi gian, xay dung Scene Graph va sinh mo ta van ban co ngu nghia. Chuong dong vai tro nen tang dinh huong cho cac chuong ky thuat tiep theo.
+
+1.2. Mot so cong trinh lien quan
+Trong nhung nam gan day, bai toan image/video captioning dua tren Scene Graph duoc quan tam rong rai [1]. Hai huong tieu bieu thuong gap la: (i) mo hinh hoa quan he ngu nghia giua cac thuc the trong canh, (ii) bien doi bieu dien do thi thanh ngon ngu tu nhien.
+
+(1) Fine-Grained Captioning of Long Videos through Scene Graph Consolidation (2025) [2].
+- Noi dung: De xuat hop nhat nhieu scene graph theo cac doan video de duy tri ngu canh tren video dai.
+- Uu diem: Giam tinh phan manh ngu nghia theo tung frame, cai thien mo ta tong the.
+- Han che: Chu yeu danh gia tren bo du lieu tong quat, chua huong dac thu boi canh lop hoc voi cac hanh vi nho, lap lai, de nham.
+
+(2) Transforming Visual Scene Graphs to Image Captions (2023) [3].
+- Noi dung: Chuyen doi truc tiep scene graph thanh caption cho anh tinh.
+- Uu diem: Lam ro vai tro scene graph nhu cau noi giua thi giac may tinh va NLP.
+- Han che: Tap trung vao anh tinh, chua mo ta duoc tinh dong va chuoi hanh vi trong video lop hoc.
+
+Tong ket, cac cong trinh tren khang dinh gia tri cua Scene Graph cho captioning, nhung khoang trong con lai la bai toan lop hoc voi nhieu doi tuong dong thoi, nhieu tuong tac va yeu cau mo ta theo ngu canh thoi gian.
+
+1.3. Mo ta bai toan
+Cac he thong nhan dien hanh dong don le thuong chua “hieu” day du ngu canh [4]. Vi du, hanh dong hoc sinh cui dau co the la doc sach, viet bai hoac mat tap trung; neu chi nhin nhan don, he thong de dua ra ket luan sai.
+
+Do do, bai toan cua de tai la:
+- Dau vao (Input): Anh lop hoc hoac video lop hoc.
+- Dau ra (Output):
+  - Scene Graph bieu dien thuc the va quan he (subject - predicate - object).
+  - Caption mo ta hoat dong hoc tap o muc anh/video, uu tien tinh dung ngu canh va tinh nhat quan voi du lieu phat hien.
+
+1.4. Muc tieu, doi tuong, phuong phap thuc hien
+Muc tieu:
+- Xay dung he thong end-to-end cho bai toan classroom understanding theo huong Scene Graph + captioning.
+- Dam bao caption co co che kiem chung (validation) dua tren entities/relations da phat hien.
+
+Doi tuong:
+- Du lieu anh/video lop hoc, tap trung vao hoc sinh, giao vien, hanh vi hoc tap va mot so vat the hoc tap co lien quan.
+
+Phuong phap nghien cuu va trien khai (theo code hien tai):
+- Thi giac may tinh:
+  - Su dung cac mo hinh YOLO da huan luyen san trong thu muc models de phan loai boi canh va phat hien person/action/object.
+  - Theo doi da doi tuong bang DeepSORT (ReID + Kalman Filter + Hungarian).
+- Scene Graph:
+  - Trich xuat triplet tu ket qua detect + track.
+  - Tong hop theo frame va segment bang vector hanh vi + cosine similarity.
+- Caption generation:
+  - Rule-based classroom caption engine.
+  - Tuy chon refine bang OpenAI/Groq neu cau hinh API san sang.
+- Validation caption:
+  - So khop entities/activities trong caption voi du lieu phat hien.
+  - Tinh precision/recall/F1 de suy ra confidence.
+- Luu tru va tich hop he thong:
+  - MongoDB (du lieu trung gian), Neo4j (do thi ngu nghia), backend Node.js/Express, frontend React.
+
+Luu y pham vi khoa hoc:
+- Cac huong BART/T5 Graph-to-Text, Faster R-CNN, 3D-CNN, ByteTrack, BLEU/METEOR/CIDEr duoc xem la huong tham khao hoc thuat; chua phai thanh phan cot loi da trien khai trong code hien tai.
+
+1.5. Noi dung can thuc hien
+De tai duoc to chuc theo cac giai doan sau (phu hop voi pipeline hien tai):
+
+Giai doan 1 - Tien xu ly va to chuc du lieu
+- Tiep nhan media dau vao (image/video), chuan hoa metadata va luong xu ly.
+- Lay mau frame theo tan suat xu ly, luu vet du lieu phuc vu truy xuat.
+
+Giai doan 2 - Nhan dien va theo doi doi tuong
+- Chay cac model YOLO cho person/action/object.
+- Ap dung DeepSORT de duy tri track ID on dinh theo thoi gian.
+
+Giai doan 3 - Xay dung Scene Graph
+- Tao triplet tu ket qua detect + track + luat gan quan he.
+- Tong hop do thi theo segment va dong bo MongoDB -> Neo4j.
+
+Giai doan 4 - Sinh caption va kiem chung
+- Sinh caption tu do thi (rule-based, co tuy chon refine LLM).
+- Danh gia do tin cay caption bang precision/recall/F1 entity-action matching.
+
+Giai doan 5 - Danh gia he thong va bao cao
+- Danh gia dinh tinh: muc do de hieu, dung ngu canh lop hoc.
+- Danh gia dinh luong dang san co trong he thong: caption confidence, precision/recall/F1.
+- Neu mo rong nghien cuu hoc thuat: bo sung BLEU/METEOR/CIDEr tren tap ground-truth thu cong.
+
+1.6. Tong ket chuong 1 va danh gia do phu hop voi code hien tai
+So voi ban Chương 1 de xuat ban dau, de tai dang trien khai trong code hien tai co mot so diem khac biet can chinh de chinh xac hon:
+
+(1) Khac biet ve mo hinh
+- Ban de xuat: neu cac lua chon YOLOv8, Faster R-CNN, 3D-CNN, Transformer-based.
+- Code hien tai: dang van hanh theo huong YOLO + DeepSORT; chua tich hop Faster R-CNN/3D-CNN/ByteTrack trong pipeline chinh.
+
+(2) Khac biet ve sinh mo ta
+- Ban de xuat: nghien cuu Graph-to-Text bang BART/T5 la truc chinh.
+- Code hien tai: sinh caption theo rule-based classroom engine, sau do co tuy chon refine bang OpenAI/Groq.
+
+(3) Khac biet ve chi so danh gia
+- Ban de xuat: dung BLEU, METEOR, CIDEr nhu bo chi so chinh.
+- Code hien tai: da co precision/recall/F1 cho entity-action alignment va confidence caption; BLEU/METEOR/CIDEr chua duoc tich hop thanh module danh gia tu dong.
+
+(4) Khac biet ve du lieu
+- Ban de xuat neu co mau 900-1500 video la muc tieu nghien cuu.
+- Code hien tai khong rang buoc cung quy mo nay; phu thuoc bo du lieu van hanh thuc te va quy trinh thu thap cua nhom.
+
+Noi dung can dieu chinh de chinh xac hon trong bao cao:
+- Mo ta ro day la he thong prototype da trien khai theo YOLO + DeepSORT + Scene Graph + rule-based captioning + validation.
+- Chuyen cac ky thuat chua co trong code (BART/T5, BLEU/METEOR/CIDEr, Faster R-CNN, 3D-CNN, ByteTrack) sang muc “huong mo rong” thay vi “da trien khai”.
+- Neu muon giu muc tieu hoc thuat ban dau, can bo sung roadmap thuc nghiem cu the cho cac module chua implement.
+
+Ket luan chuong 1:
+Huong tiep can cua de tai la phu hop va kha thi voi code hien tai. Tuy nhien, de dam bao tinh hoc thuat va tinh trung thuc ky thuat, can tach ro “nhung gi da lam” va “nhung gi de xuat mo rong” ngay tu Chương 1.
+
+
+CHUONG 2: CO SO LY THUYET VA CONG NGHE
+
+2.1. Tong quan ve Scene Graph
+Scene Graph la bieu dien co cau truc cua mot canh duoi dang:
+- Nut (nodes): thuc the (person, object, environment).
+- Canh (edges): quan he giua cac thuc the (holds, sits_on, writes_on, near, ...).
+
+Gia tri cua Scene Graph:
+- Giu duoc ngu nghia quan he, khong chi dung lai o phat hien doi tuong.
+- Phu hop cho truy van tri thuc va tao mo ta ngon ngu tu nhien.
+
+2.2. Co so ve phat hien doi tuong
+Du an su dung cac mo hinh YOLO de:
+- Phan loai canh lop hoc.
+- Phat hien nguoi hoc/giang vien.
+- Phat hien vat the va hanh dong.
+
+Diem manh:
+- Toc do suy luan cao.
+- Kha nang phat hien da lop doi tuong trong mot khung hinh.
+
+2.3. Theo doi da doi tuong (DeepSORT)
+DeepSORT ket hop:
+- Motion model: Kalman Filter de du doan vi tri track.
+- Data association: Hungarian algorithm de ghep detection voi track.
+- Appearance model: ReID embedding de giam nham lan ID.
+
+Y nghia trong de tai:
+- Bao toan danh tinh doi tuong theo chuoi khung hinh.
+- Tang do on dinh cho viec tong hop hanh vi va tao Scene Graph theo thoi gian.
+
+2.4. Bieu dien va luu tru do thi
+- MongoDB luu du lieu frame-level, segment-level, entities, captions.
+- Neo4j luu bieu dien do thi ngu nghia va quan he, ho tro truy van graph.
+- Co co che dong bo Mongo -> Neo4j trong qua trinh xu ly.
+
+2.5. Tong quan ve caption generation
+He thong ket hop 2 huong:
+- Rule-based caption engine cho boi canh lop hoc.
+- LLM refinement (tuy chon) de lam caption tu nhien hon.
+
+Dong thoi co buoc validation caption dua tren thuc the va quan he da phat hien.
+
+2.6. Cong nghe va kien truc he thong
+- AI service (Python): xu ly hinh/video, tracking, scene graph, captioning.
+- Backend (Node.js/Express): API, quan ly metadata, dieu phoi luong xu ly.
+- Frontend (React): hien thi ket qua va do thi quan he.
+- Luu tru: MongoDB + Neo4j + PostgreSQL + MinIO.
+
+
+CHUONG 3: XAY DUNG SCENE GRAPH CHO BAI TOAN LOP HOC
+
+3.1. Bai toan va mo hinh hoa du lieu
+Bai toan dat ra:
+- Tu input la anh/video lop hoc, xay dung duoc bieu dien scene graph phan anh:
+  (1) doi tuong co mat,
+  (2) hanh dong,
+  (3) quan he giua doi tuong va boi canh.
+
+Mo hinh du lieu co ban:
+- Person(id, role, bbox, action, focus_state)
+- Object(id, label, bbox)
+- Environment(label)
+- Relation(subject, predicate, object, confidence, timestamp/segment)
+
+3.2. Quy trinh xu ly video de tao Scene Graph
+Pipeline chinh:
+1. Nap mo hinh phat hien (person/action/object + classify scene).
+2. Tach khung hinh va chay detect theo tan suat cau hinh.
+3. Gan track ID voi DeepSORT.
+4. Trich xuat bo ba quan he tu ket qua detect + track.
+5. Gom nhom theo doan canh dua tren do tuong dong hanh vi.
+6. Tong hop scene graph o cap segment.
+7. Luu MongoDB va dong bo sang Neo4j.
+
+Dac diem:
+- Don vi phan tich vua theo frame (chi tiet) vua theo segment (tong quan).
+- Co lien ket track giup tranh lap doi tuong gia tao qua cac khung.
+
+3.3. Thuat toan sinh chu thich tu Scene Graph (dung theo trien khai)
+Muc tieu cua module nay la sinh caption tu do thi canh da tong hop, dong thoi kiem chung do tin cay caption bang du lieu thi giac da phat hien.
+
+Dau vao:
+- Scene graph cap image hoac segment video (subject, predicate, object, confidence).
+- Tap persons, activities, objects trich tu pipeline detect/tracking.
+
+Dau ra:
+- Caption van ban.
+- Cac chi so validation: precision, recall, F1, confidence.
+- Co needs_regeneration neu confidence duoi nguong.
+
+Buoc 1. Chuan hoa va thong ke hanh vi
+- Chuan hoa ten hanh vi ve cung namespace (vi du usingphone -> using_phone, hand_raising -> hand-raising).
+- Dem tan suat hanh vi tu scene graph/activities.
+
+Voi moi hanh vi a, ti le xuat hien duoc tinh:
+P(a) = n_a / (sum_j n_j + epsilon)
+
+Trong do n_a la so lan hanh vi a xuat hien trong doan dang xet.
+
+Buoc 2. Uoc luong trang thai tap trung
+- Chia hanh vi thanh 2 nhom:
+  + A+ (tap trung): hand-raising, raise_head, upright, writing, reading, discuss.
+  + A- (mat tap trung): turn_head, using_phone, sleep.
+
+Tong so lan xuat hien moi nhom:
+N_focus = sum_{a in A+} n_a
+N_unfocus = sum_{a in A-} n_a
+
+Ti le tap trung:
+r_focus = N_focus / (N_focus + N_unfocus + epsilon)
+
+Quy tac ra quyet dinh dang duoc code:
+- r_focus >= 0.85: very_focused.
+- 0.60 <= r_focus < 0.85: focused.
+- r_unfocus >= 0.85: very_distracted.
+- 0.60 <= r_unfocus < 0.85: distracted.
+- Con lai: mixed.
+
+Buoc 3. Sinh caption theo rule/template
+- Caption duoc tao theo huong rule-based voi opening phu hop focus band.
+- Cac hanh vi duoc sap xep theo tan suat giam dan de dua vao cau mo ta.
+- Co che nay uu tien tinh giai thich, khong dung ham Score(e)=w_c*c_e+w_f*f_e+w_r*r_e trong phien ban trien khai hien tai.
+
+Buoc 4. Kiem chung caption voi du lieu thi giac
+Sau khi co caption y, he thong trich xuat tap hanh vi/doi tuong tu caption va doi chieu voi tap hanh vi/doi tuong trong du lieu xu ly.
+
+Voi hanh vi:
+P_a = |C_a intersect K_a| / (|C_a| + epsilon)
+R_a = |C_a intersect K_a| / (|K_a| + epsilon)
+
+Trong do C_a la tap hanh vi trong caption, K_a la tap hanh vi trong du lieu.
+
+F1 hanh vi:
+F1 = 2 * P_a * R_a / (P_a + R_a + epsilon)
+
+Diem tin cay:
+Conf = round(100 * F1)
+
+Dieu kien canh bao tai sinh:
+- needs_regeneration = true neu Conf < 70 (CAPTION_REGEN_THRESHOLD).
+
+Luu y pham vi cong thuc:
+- Trong ban code hien tai, F1 dung cho tap hanh vi; doi tuong duoc dung de theo doi matched/missing/omitted, chua noi suy alpha vao F1 tong hop.
+
+3.4. Thuat toan sinh Scene Graph tu frame va tong hop theo segment (dung theo trien khai)
+Muc tieu la chuyen chuoi frame video thanh do thi ngu nghia theo 2 cap:
+- Cap frame: G_t.
+- Cap segment: G_seg.
+
+Dau vao:
+F = {f_1, ..., f_T}
+
+Buoc 1. Detection tren tung frame
+- Moi frame f_t duoc detect person, action, object bang YOLO.
+- Moi detection d_i co dang:
+  d_i = (b_i, l_i, c_i)
+  voi b_i = (x_i, y_i, w_i, h_i), l_i la nhan, c_i la do tin cay.
+- Loc theo nguong conf da cau hinh cho person/action/object.
+
+Buoc 2. Tracking da doi tuong (DeepSORT)
+- Person detections duoc gan track id on dinh qua thoi gian.
+- Matching duoc giai bang Hungarian tren cost matrix.
+- Ham chi phi dung trong code:
+C_ij = 0.4*(1 - IoU_ij) + 0.4*(1 - sim_app_ij) + 0.2*dist_center_ij
+
+Buoc 3. Lap triplet frame-level
+Moi action duoc ghep voi person tot nhat theo 2 tieu chi:
+- overlap_ratio = intersection_area(action_bbox, person_bbox) / area(action_bbox)
+- norm_dist = ||center(person)-center(action)||_2 / person_scale
+
+Dieu kien giu cap (person, action):
+- overlap_ratio >= tau_overlap
+  hoac
+- norm_dist <= tau_dist
+
+Trong code hien tai:
+- tau_overlap = ACTION_PERSON_MIN_INTERSECTION_RATIO = 0.03
+- tau_dist = ACTION_PERSON_MAX_DISTANCE_RATIO = 1.25
+
+Moi person chi giu 1 action tot nhat (uu tien confidence cao, sau do den overlap, roi den distance).
+
+Neu action can object (reading, writing, using_phone), he thong tim object phu hop gan nhat voi score heuristic:
+score_obj = norm_dist(person, object) - 0.25 * overlap_ratio(action, object)
+
+Va rang buoc norm_dist(person, object) <= OBJECT_PERSON_MAX_DISTANCE_RATIO (1.60).
+
+Triplet frame-level co dang:
+(subject=Student_trackId, predicate=action, object=object_name, confidence)
+
+Buoc 4. Vector hoa hanh vi
+Tu scene graph frame, tao vector hanh vi:
+v_t = [n_writing, n_reading, n_phone, n_sleep, n_listening]
+
+Chuan hoa:
+v_hat_t = v_t / (||v_t||_1 + epsilon)
+
+Buoc 5. Phan doan thoi gian bang cosine similarity
+Voi 2 frame lien tiep i-1 va i:
+sim_i = cos(v_hat_{i-1}, v_hat_i) = (v_hat_{i-1} . v_hat_i) / (||v_hat_{i-1}||_2 * ||v_hat_i||_2 + epsilon)
+
+Neu sim_i < tau_cos thi dong segment hien tai va mo segment moi.
+
+Trong code:
+- tau_cos = COSINE_THRESHOLD = 0.80.
+
+Buoc 6. Tong hop scene graph cap segment
+Voi moi segment, gop cac triplet frame-level theo key (subject, predicate, object):
+- count = so lan xuat hien trong segment.
+- confidence = max confidence quan sat duoc.
+
+Sau do sap xep theo:
+- count giam dan,
+- confidence giam dan,
+- predicate tang dan.
+
+Luu y trung thuc voi trien khai:
+- Ban code hien tai chua su dung cong thuc nguong kieu Score_seg >= eta_s hoac Freq_seg >= eta_f.
+- Co che tong hop dang dung la count + max confidence + sap xep heuristic.
+
+3.5. Dong bo MongoDB - Neo4j
+Qua trinh dong bo:
+- Tao/rang buoc schema graph truoc khi ghi.
+- Dua entities va relations tu MongoDB sang Neo4j.
+- Dam bao idempotent o muc node/edge de han che trung lap.
+
+Y nghia:
+- Neo4j tro thanh lop truy van ngu nghia trung tam.
+- Ho tro khai thac scene graph cho captioning va visualization.
+
+3.6. Danh gia chuong 3
+Ket qua dat duoc:
+- Xay dung duoc scene graph nhat quan theo ngu canh lop hoc.
+- Co du doi tuong, hanh dong, quan he theo frame va segment.
+- Kha nang mo rong tot nhat nho thiet ke tach lop (detect/tracking/graph sync).
+
+Han che:
+- Do chinh xac phu thuoc chat luong detection/action model.
+- Quan he phuc tap cap cao van can luat hoac hoc bo sung de bieu dien day du hon.
+
+
+CHUONG 4: TAO CHU THICH TU SCENE GRAPH
+
+4.1. Bai toan sinh mo ta
+Dau vao:
+- Scene Graph o muc image hoac video segment (da dong bo Neo4j).
+
+Dau ra:
+- Caption mo ta canh hoc, uu tien:
+  - Noi dung hanh vi chinh,
+  - Muc do tap trung,
+  - Tinh nhat quan voi du lieu phat hien.
+
+4.2. Co che doc do thi va tao caption
+Buoc thuc hien:
+1. Truy van graph de lay entities + relations then chot.
+2. Tong hop thong tin thanh mau mo ta co cau truc.
+3. Sinh raw caption theo rule-based engine.
+4. Tuy chon refinement bang LLM de mieu ta tu nhien.
+
+Trong bai toan video:
+- Caption tong quat duoc tao tu thong tin theo segment + tong hop toan video.
+
+4.3. Rule-based classroom caption engine
+Engine su dung cac luat:
+- Nhan dien nhom hanh vi tap trung (listening, writing, reading, presenting, ...).
+- Nhan dien hanh vi mat tap trung (using_phone, sleeping, talking_off_topic, ...).
+- Uoc luong ty le student focused/unfocused.
+- Tao cau mo ta theo template giai thich boi canh lop hoc.
+
+Loi ich:
+- De kiem soat noi dung caption.
+- De giai thich va dieu chinh theo yeu cau nghiep vu giao duc.
+
+4.4. Kiem chung caption voi du lieu phat hien
+He thong co buoc validation:
+- Tach cac thuc the/tu khoa trong caption.
+- So khop voi entities duoc detect trong du lieu xu ly.
+- Tinh cac chi so precision, recall, F1 va suy ra confidence.
+
+Y nghia:
+- Han che caption “ao” khong co can cu thi giac.
+- Tao co so danh gia tu dong cho chat luong caption.
+
+4.5. Luong xu ly image va video
+Luong image:
+- Detect -> triplets -> sync graph -> generate caption -> validate -> save.
+
+Luong video:
+- Detect + tracking -> segment graph -> sync graph -> generate caption -> validate -> update metadata.
+
+He thong co co che fallback caption khi graph qua ngheo hoac de phong loi.
+
+4.6. Danh gia chuong 4
+Uu diem:
+- Ket hop duoc tri thuc graph voi caption theo ngu canh lop hoc.
+- Co validation giup danh gia do tin cay ket qua.
+- Co the nang cap chat luong ngon ngu thong qua refinement.
+
+Han che:
+- Rule-based caption gioi han ve do phong phu dien dat.
+- Phu thuoc vao do dung cua detect/tracking va graph extraction.
+
+
+CHUONG 5: THUC NGHIEM, DANH GIA VA HUONG PHAT TRIEN
+
+5.1. Moi truong va du lieu thuc nghiem
+Moi truong:
+- AI service: Python, cac mo hinh YOLO, DeepSORT, xu ly OpenCV.
+- Backend: Node.js/Express.
+- Frontend: React.
+- Data services: MongoDB, Neo4j, PostgreSQL, MinIO.
+
+Du lieu:
+- Anh/video canh lop hoc trong cac boi canh khac nhau (hoc tap trung, thao luan, mat tap trung).
+
+5.2. Tieu chi danh gia
+Cho nhan dien va tracking:
+- Do chinh xac detect theo nhan chinh.
+- Do on dinh track ID theo thoi gian.
+
+Cho Scene Graph:
+- Muc do dung cua triplet va quan he then chot.
+- Muc do nhat quan giua frame-level va segment-level.
+
+Cho Caption:
+- Entity consistency (so khop entity caption voi detect).
+- Confidence tu precision/recall/F1.
+- Danh gia dinh tinh: tinh de hieu, dung boi canh lop hoc.
+
+5.3. Ket qua tong hop
+He thong dat duoc:
+- Pipeline end-to-end tu media den graph va caption.
+- Kha nang mo ta hanh vi lop hoc o muc tong quan.
+- Kha nang truy van va visualization graph qua Neo4j + frontend.
+
+Ghi nhan:
+- Cac ky thuat su dung thuc te trong du an la CNN/YOLO va DeepSORT.
+- Cac phuong phap clustering (K-Means/MeanShift/DBSCAN) hoac classifier co dien (LR/SVM/KNN/RF/DT) khong phai thanh phan cot loi cua pipeline production hien tai.
+
+5.4. Han che va nguyen nhan
+- Du lieu nhieu boi canh de gay nhiu cho phat hien hanh dong.
+- Quan he ngu nghia phuc tap chua duoc suy luan sau (vi du y dinh hoc tap).
+- Kich thuoc du lieu danh gia chua lon de khang dinh kha nang tong quat hoa.
+
+5.5. Huong phat trien
+- Nang cap mo hinh action recognition va relation extraction chuyen biet cho lop hoc.
+- Bo sung bo du lieu gan nhan chuan hoa theo ngu canh giao duc Viet Nam.
+- Ket hop hoc do thi (graph neural network) cho suy luan quan he cap cao.
+- Toi uu caption bang huong ket hop rule-based + LLM co rang buoc factuality chat che hon.
+- Xay dung dashboard danh gia lop hoc theo thoi gian thuc dua tren graph va caption confidence.
+
+KET LUAN
+De tai da xay dung duoc mot he thong phan tich canh lop hoc theo huong Scene Graph va tao caption co kiem chung. Gia tri noi bat nam o viec ket noi du lieu thi giac voi bieu dien tri thuc do thi, tu do tao ra mo ta co y nghia nghiep vu. Giai phap hien tai da co kha nang trien khai thuc te o muc prototype va co nhieu tiem nang mo rong thanh nen tang ho tro quan tri va danh gia chat luong day hoc trong tuong lai.
+
+TAI LIEU THAM KHAO GOI Y
+[1] Joseph Redmon et al., You Only Look Once: Unified, Real-Time Object Detection.
+[2] Joseph Redmon, Ali Farhadi, YOLOv3: An Incremental Improvement.
+[3] Nicolai Wojke et al., Simple Online and Realtime Tracking with a Deep Association Metric (DeepSORT).
+[4] Kaiming He et al., Deep Residual Learning for Image Recognition (ResNet).
+[5] Karen Simonyan, Andrew Zisserman, Very Deep Convolutional Networks for Large-Scale Image Recognition (VGG).
+[6] Justin Johnson et al., Image Retrieval using Scene Graphs.
+[7] Rowan Zellers et al., Neural Motifs: Scene Graph Parsing by Iterative Message Passing.
+[8] Tai lieu huong dan Neo4j Graph Modeling va Cypher.
+[9] Tai lieu MongoDB Data Modeling.
+[10] Tai lieu thuc thi React + Node.js + Python cho he thong da dich vu.
+
+GHI CHU SU DUNG
+- Ban nay la ban text de dan vao word processor va dinh dang theo chuan truong.
+- Co the bo sung so lieu bang bieu/ket qua thuc nghiem thuc te cua nhom de hoan thien ban cuoi.

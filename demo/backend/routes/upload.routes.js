@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const { uploadVideo } = require("../controllers/upload.controller");
-const { verifyToken } = require("../middlewares/auth.middleware");
+const { verifyToken, verifyUserExists } = require("../middlewares/auth.middleware");
 
 const router = express.Router();
 
@@ -11,6 +11,6 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 } // Giới hạn 500MB
 });
 
-router.post("/upload-video", verifyToken, upload.single("video"), uploadVideo);
+router.post("/upload-video", verifyToken, verifyUserExists, upload.single("video"), uploadVideo);
 
 module.exports = router;

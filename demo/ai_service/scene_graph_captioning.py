@@ -1,5 +1,6 @@
 import os
 import logging
+import subprocess
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,40 @@ from classroom_caption_engine import (
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+
+def _mirror_caption_to_postgres(media_type: str, media_id: ObjectId) -> None:
+    script_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "backend", "scripts", "mirrorCaptionToPostgres.js")
+    )
+
+    if not os.path.exists(script_path):
+        logger.warning("⚠️ PostgreSQL mirror helper not found: %s", script_path)
+        return
+
+    try:
+        creation_flags = 0
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            creation_flags |= subprocess.DETACHED_PROCESS
+        if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            creation_flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+
+        subprocess.Popen(
+            ["node", script_path, media_type, str(media_id)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            cwd=os.path.dirname(script_path),
+            creationflags=creation_flags,
+        )
+        logger.info("✅ PostgreSQL caption mirror queued for %s %s", media_type, media_id)
+    except Exception as error:
+        logger.warning(
+            "⚠️ PostgreSQL caption mirror failed for %s %s: %s",
+            media_type,
+            media_id,
+            error,
+        )
 
 
 POSITIVE_ACTIONS = {"hand-raising", "raise_head", "upright", "writing", "reading", "discuss"}
@@ -993,6 +1028,7 @@ def generate_caption_from_neo4j_graph(mongo_db, image_doc: Dict[str, Any]) -> Di
             "created_at": datetime.now(timezone.utc),
         }
         mongo_db["caption"].insert_one(caption_doc_ns)
+        _mirror_caption_to_postgres("image", image_oid)
         mongo_db["image"].update_one(
             {"_id": image_oid},
             {
@@ -1048,6 +1084,7 @@ def generate_caption_from_neo4j_graph(mongo_db, image_doc: Dict[str, Any]) -> Di
     }
 
     mongo_db["caption"].insert_one(caption_doc)
+    _mirror_caption_to_postgres("image", image_oid)
 
     mongo_db["image"].update_one(
         {"_id": image_oid},
@@ -1552,6 +1589,7 @@ def generate_video_caption_from_neo4j_graph(mongo_db, video_doc: Dict[str, Any])
             "created_at": datetime.now(timezone.utc),
         }
     )
+    _mirror_caption_to_postgres("video", video_oid)
 
     mongo_db["video"].update_one(
         {"_id": video_oid},

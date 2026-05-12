@@ -678,7 +678,8 @@ class ClassroomGraphSync:
                     SET s.segment_index = $segment_index,
                         s.start_time = $start_time,
                         s.end_time = $end_time,
-                        s.keyframe = $keyframe
+                        s.keyframe = $keyframe,
+                        s.pg_id = $pg_id
                     MERGE (s)-[:SEGMENT_OF]->(rs)
 
                     MERGE (srp:RootPerson {uid: 'SRP_' + $sid})
@@ -697,6 +698,7 @@ class ClassroomGraphSync:
                     start_time=segment.get("start_time"),
                     end_time=segment.get("end_time"),
                     keyframe=keyframe_id,
+                    pg_id=segment.get("pg_id"),
                 )
                 counters["segments"] += 1
 
@@ -707,13 +709,15 @@ class ClassroomGraphSync:
                     MERGE (cs:CaptionSegment {uid: $uid})
                     SET cs.text = $text,
                         cs.segment_index = $segment_index,
-                        cs.caption_source = 'segment_doc'
+                        cs.caption_source = 'segment_doc',
+                        cs.pg_id = $pg_id
                     MERGE (cs)-[:DESCRIPTION_OF]->(srcs)
                     """,
                     sid=segment_id,
                     uid=f"CS_{segment_id}",
                     text=segment.get("caption", ""),
                     segment_index=segment.get("segment_index"),
+                    pg_id=segment.get("pg_id"),
                 )
                 counters["segment_captions"] += 1
 
@@ -741,13 +745,15 @@ class ClassroomGraphSync:
                         MATCH (srp:RootPerson {uid: 'SRP_' + $sid})
                         MERGE (p:Person {mongo_id: $pid})
                         SET p.track_id = $track_id,
-                            p.role = $role
+                            p.role = $role,
+                            p.pg_id = $pg_id
                         MERGE (p)-[:MEMBER_OF]->(srp)
                         """,
                         sid=segment_id,
                         pid=pid,
                         track_id=person.get("track_id"),
                         role=person.get("role"),
+                        pg_id=person.get("pg_id"),
                     )
                     counters["persons"] += 1
 
@@ -758,13 +764,15 @@ class ClassroomGraphSync:
                         MATCH (sreo:RootEntityObject {uid: 'SREO_' + $sid})
                         MERGE (o:EntityObject {mongo_id: $oid})
                         SET o.object_name = $name,
-                            o.category = $category
+                            o.category = $category,
+                            o.pg_id = $pg_id
                         MERGE (o)-[:ITEM_OF]->(sreo)
                         """,
                         sid=segment_id,
                         oid=oid,
                         name=obj.get("object_name"),
                         category=obj.get("category"),
+                        pg_id=obj.get("pg_id"),
                     )
                     counters["objects"] += 1
 
@@ -848,13 +856,15 @@ class ClassroomGraphSync:
                         MATCH (sra:RootActivity {uid: 'SRA_' + $sid})
                         MERGE (a:Activity {mongo_id: $aid})
                         SET a.activity_name = $activity_name,
-                            a.category = $category
+                            a.category = $category,
+                            a.pg_id = $pg_id
                         MERGE (a)-[:ACTION_OF]->(sra)
                         """,
                         sid=segment_id,
                         aid=aid,
                         activity_name=activity.get("activity_name"),
                         category=activity.get("category") or "student_behavior",
+                        pg_id=activity.get("pg_id"),
                     )
                     counters["activities"] += 1
 
@@ -921,7 +931,8 @@ class ClassroomGraphSync:
                     SET c.text = $text,
                         c.model_used = $model_used,
                         c.caption_source = $caption_source,
-                        c.caption_scope = 'video'
+                        c.caption_scope = 'video',
+                        c.pg_id = $pg_id
                     MERGE (c)-[:DESCRIPTION_OF]->(v)
                     """,
                     vid=video_id,
@@ -929,6 +940,7 @@ class ClassroomGraphSync:
                     text=caption.get("caption"),
                     model_used=caption.get("model_used"),
                     caption_source=caption.get("caption_source"),
+                    pg_id=caption.get("pg_id"),
                 )
                 counters["video_captions"] += 1
 
@@ -945,7 +957,8 @@ class ClassroomGraphSync:
             SET i.name = $name,
                 i.minio_url = $url,
                 i.status = $status,
-                i.processed_at = $processed_at
+                i.processed_at = $processed_at,
+                i.pg_id = $pg_id
 
             MERGE (i)-[:PART_OF]->(g)
 
@@ -964,6 +977,7 @@ class ClassroomGraphSync:
             url=image_doc.get("minio_url"),
             status=image_doc.get("status"),
             processed_at=image_doc.get("processed_at"),
+            pg_id=image_doc.get("pg_id"),
         )
 
     def _upsert_video_and_roots(self, session, video_doc):
@@ -977,7 +991,8 @@ class ClassroomGraphSync:
             SET v.name = $name,
                 v.minio_url = $url,
                 v.status = $status,
-                v.processed_at = $processed_at
+                v.processed_at = $processed_at,
+                v.pg_id = $pg_id
 
             MERGE (v)-[:PART_OF]->(rv)
 
@@ -989,6 +1004,7 @@ class ClassroomGraphSync:
             url=video_doc.get("minio_url"),
             status=video_doc.get("status"),
             processed_at=video_doc.get("processed_at"),
+            pg_id=video_doc.get("pg_id"),
         )
 
 

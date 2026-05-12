@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import subprocess
 from datetime import datetime, timezone
 from math import sqrt
 from typing import Any, Dict, List, Optional
@@ -13,6 +14,14 @@ from ultralytics import YOLO
 
 from deepsort_tracker import DeepSORTTracker, Detection
 from sync_mongo_to_neo4j import sync_video_to_neo4j
+
+# Fix encoding issues on Windows
+subprocess_kwargs_defaults = {
+    'stdout': subprocess.PIPE,
+    'stderr': subprocess.PIPE,
+    'encoding': 'utf-8',
+    'errors': 'replace'  # Replace invalid characters instead of failing
+}
 
 try:
     from scene_graph_captioning import (
@@ -39,6 +48,7 @@ person_col = db["person"]
 activity_col = db["activity"]
 object_col = db["entity_object"]
 caption_col = db["caption"]
+triplets_col = db["scene_graph_triplet"]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
@@ -76,6 +86,35 @@ ACTION_OBJECT_RULES = {
     "writing": ["notebook", "paper", "pen"],
     "using_phone": ["phone", "mobile phone"],
 }
+
+
+def _mirror_processing_results_to_postgres(video_id_str: str) -> None:
+    script_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "backend", "scripts", "mirrorProcessingResultsToPostgres.js")
+    )
+
+    if not os.path.exists(script_path):
+        print(f"⚠️ PostgreSQL processing mirror helper not found: {script_path}")
+        return
+
+    try:
+        creation_flags = 0
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            creation_flags |= subprocess.DETACHED_PROCESS
+        if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            creation_flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+
+        subprocess.Popen(
+            ["node", script_path, "video", video_id_str],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            cwd=os.path.dirname(script_path),
+            creationflags=creation_flags,
+        )
+        print(f"✅ PostgreSQL processing mirror queued for video {video_id_str}")
+    except Exception as error:
+        print(f"⚠️ PostgreSQL processing mirror failed for video {video_id_str}: {error}")
 
 BEHAVIOR_KEYS = ["writing", "reading", "phone", "sleep", "listening"]
 
@@ -822,6 +861,12 @@ def clear_previous_video_results(video_oid: ObjectId) -> None:
     activity_col.delete_many(delete_filter)
     object_col.delete_many(delete_filter)
     caption_col.delete_many({"video_id": video_oid, "caption_scope": "video"})
+    # Also remove any previously generated scene graph triplets for this video
+    try:
+        triplets_col.delete_many({"video_id": video_oid})
+    except Exception:
+        # Defensive: if collection missing or deletion fails, continue processing
+        pass
 
 
 
@@ -1019,8 +1064,39 @@ def process_video(video_path: str, video_id_str: str) -> Dict[str, Any]:
     if segment_docs:
         segment_col.insert_many(segment_docs)
 
+    # ===============================
+    # GENERATE SCENE GRAPH TRIPLETS FOR VIDEO (one doc per aggregated triplet)
+    # ===============================
+    try:
+        triplet_docs: List[Dict[str, Any]] = []
+        for seg in segment_docs:
+            seg_id = seg.get("_id")
+            seg_idx = seg.get("segment_index")
+            for t in seg.get("segment_scene_graph", []) or []:
+                triplet_doc = {
+                    "_id": ObjectId(),
+                    "video_id": video_oid,
+                    "segment_id": seg_id,
+                    "segment_index": seg_idx,
+                    "type": "aggregated",
+                    "subject": t.get("subject"),
+                    "predicate": t.get("predicate"),
+                    "object": t.get("object"),
+                    "confidence": float(t.get("confidence", 0.0) or 0.0),
+                    "count": int(t.get("count", 1) or 1),
+                    "created_at": datetime.now(timezone.utc),
+                }
+                triplet_docs.append(triplet_doc)
+
+        if triplet_docs:
+            triplets_col.insert_many(triplet_docs)
+            print(f"✅ Inserted {len(triplet_docs)} aggregated scene graph triplets for video {video_id_str}")
+    except Exception as trip_err:
+        print(f"⚠️ Failed to write scene_graph_triplet for video {video_id_str}: {trip_err}")
+
     # Sync this processed video from MongoDB to Neo4j before generating captions.
     try:
+        _mirror_processing_results_to_postgres(video_id_str)
         neo4j_sync_result = sync_video_to_neo4j(video_id_str)
         print(f"🔗 Neo4j video sync successful before captioning: {neo4j_sync_result}")
     except Exception as sync_error:

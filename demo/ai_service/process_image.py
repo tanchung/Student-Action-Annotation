@@ -6,7 +6,8 @@ from ultralytics import YOLO
 from bson import ObjectId
 from pymongo import MongoClient
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+import subprocess
 from sync_mongo_to_neo4j import sync_image_to_neo4j
 from graph_similarity_caption import GraphSimilarityCaptionService
 from scene_graph_captioning import generate_caption_from_neo4j_graph
@@ -104,6 +105,36 @@ DISTANCE_THRESHOLD = 150
 MIN_INTERSECTION_AREA = 10  # Minimum intersection area in pixels (lowered from requiring overlap)
 CLASSROOM_CONFIDENCE_THRESHOLD = 0.80
 CAPTION_REGEN_THRESHOLD = 70
+
+
+
+def _mirror_processing_results_to_postgres(image_id_str: str) -> None:
+    script_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "backend", "scripts", "mirrorProcessingResultsToPostgres.js")
+    )
+
+    if not os.path.exists(script_path):
+        print(f"⚠️ PostgreSQL processing mirror helper not found: {script_path}")
+        return
+
+    try:
+        creation_flags = 0
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            creation_flags |= subprocess.DETACHED_PROCESS
+        if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            creation_flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+
+        subprocess.Popen(
+            ["node", script_path, "image", image_id_str],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            cwd=os.path.dirname(script_path),
+            creationflags=creation_flags,
+        )
+        print(f"✅ PostgreSQL processing mirror queued for image {image_id_str}")
+    except Exception as error:
+        print(f"⚠️ PostgreSQL processing mirror failed for image {image_id_str}: {error}")
 
 # Scale-aware matching thresholds (work across small and large images)
 ACTION_PERSON_MIN_INTERSECTION_RATIO = 0.03
@@ -442,7 +473,7 @@ def extract_triplets(persons, activities, objects, image_oid):
                     "person": person_info,
                     "activity": activity_info,
                     "object": object_info,
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.now(timezone.utc)
                 }
                 triplets.append(triplet_doc)
                 break  # 1 person chỉ 1 action
@@ -540,7 +571,7 @@ def process_image(image_path, image_id_str):
                 {
                     "$set": {
                         "status": "error",
-                        "processed_at": datetime.utcnow(),
+                        "processed_at": datetime.now(timezone.utc),
                         "error_message": "Ảnh không phải là lớp học. Vui lòng thử ảnh khác."
                     }
                 }
@@ -562,7 +593,7 @@ def process_image(image_path, image_id_str):
             "confidence": float(f"{classroom_confidence:.6f}"),
             "predicted_class": predicted_class,
             "class_probabilities": {k: float(f"{v:.6f}") for k, v in classroom_probabilities.items()},
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc)
         }
         environments_col.insert_one(environment_doc)
         print(f"✓ Đã lưu environment (ID: {environment_doc['_id']})\n")
@@ -602,7 +633,7 @@ def process_image(image_path, image_id_str):
                     "role": class_name,
                     "bbox": [x1, y1, x2 - x1, y2 - y1],
                     "confidence": round(float(box.conf), 3),
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.now(timezone.utc)
                 }
                 persons.append(person_doc)
                 role_counts[class_name] = role_counts.get(class_name, 0) + 1
@@ -631,7 +662,7 @@ def process_image(image_path, image_id_str):
                     "category": "device",
                     "bbox": [x1, y1, x2 - x1, y2 - y1],
                     "confidence": round(float(box.conf), 3),
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.now(timezone.utc)
                 }
                 objects.append(object_doc)
         print(f"✓ Detected {len(objects)} objects\n")
@@ -782,7 +813,7 @@ def process_image(image_path, image_id_str):
                 "category": "student_behavior",
                 "bbox": action_bbox,
                 "confidence": conf,
-                "created_at": datetime.utcnow()
+                "created_at": datetime.now(timezone.utc)
             }
             if target_object_id:
                 activity_doc["target_object_id"] = target_object_id
@@ -848,6 +879,7 @@ def process_image(image_path, image_id_str):
         # Sync this processed image from MongoDB to Neo4j (incremental)
         neo4j_synced_ok = False
         try:
+            _mirror_processing_results_to_postgres(image_id_str)
             neo4j_sync_result = sync_image_to_neo4j(image_id_str)
             print(f"🔗 Neo4j sync successful: {neo4j_sync_result}")
             neo4j_synced_ok = True
@@ -1036,7 +1068,7 @@ def process_image(image_path, image_id_str):
                     "$set": {
                         "status": "error",
                         "error_message": str(e),
-                        "processed_at": datetime.utcnow()
+                        "processed_at": datetime.now(timezone.utc)
                     }
                 }
             )

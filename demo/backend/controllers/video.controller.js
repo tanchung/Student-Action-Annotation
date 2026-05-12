@@ -24,56 +24,85 @@ const RELATED_COLLECTIONS = [
 // 1. Lấy danh sách Video (Có phân quyền)
 exports.getListVideos = async (req, res) => {
     try {
+        // Try to read from PostgreSQL materialized view `video_full` if it exists
+        try {
+            const check = await pgPool.query("SELECT to_regclass('public.video_full') AS exists");
+            if (check.rows[0] && check.rows[0].exists) {
+                // Query by mongo_id (store as string in view)
+                const mongoIdStr = ObjectId.isValid(video_id) ? String(new ObjectId(video_id)) : String(video_id);
+                const pgRes = await pgPool.query('SELECT * FROM video_full WHERE mongo_id = $1 LIMIT 1', [mongoIdStr]);
+                if (pgRes.rows.length > 0) {
+                    // Return the materialized row directly (assume columns are JSONB for parts)
+                    const row = pgRes.rows[0];
+                    return res.status(200).json({ success: true, data: row });
+                }
+            }
+        } catch (pgCheckErr) {
+            // Ignore PG errors and fallback to Mongo
+            console.warn('PG video_full check failed, falling back to Mongo:', pgCheckErr.message);
+        }
         const { role, id } = req.user || {};
         const { show_deleted } = req.query; // Thêm query param để xem video đã xóa
-        
-        let filter = {};
+        // Use PostgreSQL for list + pagination to reduce Mongo load.
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+        const offset = (page - 1) * limit;
 
-        // Nếu user thường -> chỉ thấy video mình up
+        // Build PG WHERE clause
+        const where = ["type = 'video'"];
+        const params = [];
+        let paramIndex = 1;
+
         if (role !== 'admin' && id) {
-            filter.uploader_id = id;
+            where.push(`uploader_id = $${paramIndex++}`);
+            params.push(id);
         }
 
-        // Lọc theo trạng thái deleted
-        if (show_deleted === 'true') {
-            // Chỉ lấy video đã bị xóa (soft deleted)
-            filter.is_deleted = true;
-        } else {
-            // Mặc định: chỉ lấy video chưa bị xóa
-            filter.$or = [
-                { is_deleted: { $exists: false } },
-                { is_deleted: false }
-            ];
+        // show_deleted is a Mongo concept; we will fetch from Mongo later and filter per-item if needed.
+
+        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        // Get total count for pagination
+        const countRes = await pgPool.query(`SELECT COUNT(*)::int AS cnt FROM media_assets ${whereClause}`, params);
+        const total = countRes.rows[0]?.cnt || 0;
+
+        // Fetch page of media assets from PG
+        const pageParams = params.slice();
+        pageParams.push(limit, offset);
+        const query = `SELECT id AS pg_id, mongo_id, type, name, uploader_id FROM media_assets ${whereClause} ORDER BY id DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+        const result = await pgPool.query(query, pageParams);
+        const rows = result.rows || [];
+
+        // If no rows, return empty
+        if (rows.length === 0) {
+            return res.status(200).json({ success: true, count: 0, data: [] });
         }
 
-        // Lấy các trường cần thiết cho Dashboard
-        const videos = await Video.find(filter, { 
-            video_id: 1, 
-            clip_name: 1, 
-            minio_url: 1, 
-            duration: 1, 
-            thumbnail_url: 1, 
-            status: 1,       
-            processing_started_at: 1,
-            processed_at: 1,
-            ai_pipeline_exit_code: 1,
-            ai_pipeline_finished_at: 1,
-            caption_confidence: 1,
-            confidence_score: 1,
-            caption_is_reliable: 1,
-            caption_regeneration_required: 1,
-            caption_review_required: 1,
-            caption_regeneration_reason: 1,
-            created_at: 1,
-            is_deleted: 1,
-            deleted_at: 1,
-            _id: 1 
-        }).sort({ created_at: -1 });
+        // Convert mongo_ids to ObjectId list for a single Mongo query
+        const mongoIds = rows.map(r => r.mongo_id).filter(Boolean).map(idStr => {
+            try { return new ObjectId(idStr); } catch { return null; }
+        }).filter(Boolean);
+
+        // Fetch the full Mongo documents only for the page items
+        const mongoDocs = await Video.find({ _id: { $in: mongoIds } }).lean();
+        const mongoById = new Map(mongoDocs.map(d => [String(d._id), d]));
+
+        // Merge PG rows with Mongo docs, preserving PG order
+        const videos = rows.map(r => {
+            const m = mongoById.get(String(r.mongo_id)) || {};
+            return Object.assign({}, m, {
+                _pg: {
+                    pg_id: r.pg_id,
+                    name: r.name,
+                    uploader_id: r.uploader_id
+                }
+            });
+        });
         
         // Tạo pre-signed URLs cho video và thumbnail
         const videosWithUrls = await Promise.all(
             videos.map(async (video) => {
-                const videoObj = video.toObject();
+                const videoObj = video;  // Already a plain object from Object.assign
                 
                 // Tạo pre-signed URL cho video
                 if (videoObj.minio_url) {
@@ -219,7 +248,7 @@ exports.getVideoFullMetadata = async (req, res) => {
     }
 
     try {
-        // Bước 1: Lấy info video gốc
+        // Bước 1: Lấy info video gốc (Mongo fallback)
         const videoInfo = await Video.findOne(query).lean();
 
         if (!videoInfo) {
@@ -905,7 +934,10 @@ exports.analyzeVideo = async (req, res) => {
             });
         }
 
-        if (role !== 'admin' && video.uploader_id.toString() !== req.user.id) {
+        const ownerId = String(video.uploader_id ?? '');
+        const currentUserId = String(req.user?.id ?? '');
+
+        if (role !== 'admin' && ownerId !== currentUserId) {
             return res.status(403).json({
                 success: false,
                 message: "Bạn không có quyền phân tích video này"
@@ -1000,6 +1032,7 @@ exports.analyzeVideo = async (req, res) => {
                                 }
                             }
                         );
+                        
                     } catch (updateErr) {
                         console.error('Failed to update video status to done:', updateErr.message);
                     }

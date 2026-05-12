@@ -7,7 +7,7 @@ const videoController = require('../controllers/video.controller');
 const uploadController = require('../controllers/upload.controller'); // Import controller mới tách
 
 // Import Middleware
-const { verifyToken, isAdmin } = require('../middlewares/auth.middleware');
+const { verifyToken, verifyUserExists, isAdmin } = require('../middlewares/auth.middleware');
 
 // Cấu hình Multer (Lưu bộ nhớ tạm để buffer lên MinIO)
 const storage = multer.memoryStorage();
@@ -17,7 +17,7 @@ const upload = multer({ storage: storage });
 // 1. ROUTE UPLOAD (Quan trọng nhất)
 // ==========================================
 // Yêu cầu: Phải đăng nhập (verifyToken) để lấy uploader_id
-router.post('/upload', verifyToken, upload.single('video'), uploadController.uploadVideo);
+router.post('/upload', verifyToken, verifyUserExists, upload.single('video'), uploadController.uploadVideo);
 
 
 // ==========================================
@@ -35,7 +35,7 @@ router.post('/:video_id/restore', verifyToken, isAdmin, videoController.restoreV
 // ==========================================
 // AI ANALYSIS ROUTE - Must be before /:video_id routes
 // ==========================================
-router.post('/:video_id/analyze', verifyToken, videoController.analyzeVideo);
+router.post('/:video_id/analyze', verifyToken, verifyUserExists, videoController.analyzeVideo);
 
 // Các routes cụ thể phải đặt TRƯỚC route động /:video_id
 router.get('/:video_id/metadata', verifyToken, videoController.getVideoFullMetadata);

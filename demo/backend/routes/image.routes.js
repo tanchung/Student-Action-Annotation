@@ -7,7 +7,7 @@ const imageController = require('../controllers/image.controller');
 const imageUploadController = require('../controllers/imageUpload.controller');
 
 // Import Middleware
-const { verifyToken, isAdmin } = require('../middlewares/auth.middleware');
+const { verifyToken, verifyUserExists, isAdmin } = require('../middlewares/auth.middleware');
 
 // Cấu hình Multer (Lưu bộ nhớ tạm để buffer lên MinIO)
 const storage = multer.memoryStorage();
@@ -16,7 +16,7 @@ const upload = multer({ storage: storage });
 // ==========================================
 // 1. ROUTE UPLOAD IMAGE
 // ==========================================
-router.post('/upload', verifyToken, upload.single('image'), imageUploadController.uploadImage);
+router.post('/upload', verifyToken, verifyUserExists, upload.single('image'), imageUploadController.uploadImage);
 
 // ==========================================
 // 2. ROUTES TRUY VẤN
@@ -33,7 +33,7 @@ router.post('/:image_id/restore', verifyToken, isAdmin, imageController.restoreI
 // ==========================================
 // AI ANALYSIS ROUTE - Must be before /:image_id routes
 // ==========================================
-router.post('/:image_id/analyze', verifyToken, imageController.analyzeImage);
+router.post('/:image_id/analyze', verifyToken, verifyUserExists, imageController.analyzeImage);
 
 // Các routes cụ thể
 router.get('/:image_id/metadata', verifyToken, imageController.getImageFullMetadata);

@@ -1,6 +1,7 @@
 const Image = require('../models/ImageMetadata');
 const { minioClient, BUCKET_NAME } = require("../config/minio");
 const { getImageMetadata, generateImageThumbnail, optimizeImage, validateImage } = require('../utils/image.helper');
+const PGMirrorService = require('../services/pgMirrorService');
 
 exports.uploadImage = async (req, res) => {
   try {
@@ -111,6 +112,13 @@ exports.uploadImage = async (req, res) => {
     });
 
     await newImage.save();
+
+    // Mirror to PostgreSQL asynchronously (non-blocking)
+    setImmediate(() => {
+      PGMirrorService.mirrorMediaAsset(newImage, 'image').catch(err => {
+        console.error('Failed to mirror image to PostgreSQL:', err);
+      });
+    });
 
     return res.status(201).json({
       success: true,

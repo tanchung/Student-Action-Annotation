@@ -1,6 +1,7 @@
 const Video = require('../models/VideoMetadata');
 const { minioClient, BUCKET_NAME } = require("../config/minio");
 const { getVideoMetadata, generateThumbnail, convertToH264, needsH264Conversion } = require('../utils/video.helper');
+const PGMirrorService = require('../services/pgMirrorService');
 
 exports.uploadVideo = async (req, res) => {
   try {
@@ -102,6 +103,13 @@ exports.uploadVideo = async (req, res) => {
     });
 
     await newVideo.save();
+
+    // Mirror to PostgreSQL asynchronously (non-blocking)
+    setImmediate(() => {
+      PGMirrorService.mirrorMediaAsset(newVideo, 'video').catch(err => {
+        console.error('Failed to mirror video to PostgreSQL:', err);
+      });
+    });
 
     return res.status(201).json({
       success: true,

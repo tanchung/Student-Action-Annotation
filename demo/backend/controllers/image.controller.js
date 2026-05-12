@@ -774,7 +774,6 @@ exports.deleteImagePermanently = async (req, res) => {
 // ==========================================
 // AI ANALYSIS
 // ==========================================
-
 /**
  * Analyze image with AI models (YOLO)
  * Triggers Python script to process image and save results to MongoDB
@@ -808,7 +807,10 @@ exports.analyzeImage = async (req, res) => {
         }
 
         // Check permission (users can only analyze their own images)
-        if (role !== 'admin' && image.uploader_id.toString() !== req.user.id) {
+        const ownerId = String(image.uploader_id ?? '');
+        const currentUserId = String(req.user?.id ?? '');
+
+        if (role !== 'admin' && ownerId !== currentUserId) {
             return res.status(403).json({
                 success: false,
                 message: "Bạn không có quyền phân tích hình ảnh này"
@@ -903,6 +905,49 @@ exports.analyzeImage = async (req, res) => {
             pythonProcess.on('exit', async (code) => {
                 console.log(`Python process exited with code: ${code}`);
 
+                const sanitizePythonError = (rawError) => {
+                    if (!rawError) return '';
+                    return rawError
+                        .split(/\r?\n/)
+                        .filter((line) => {
+                            const lower = line.toLowerCase();
+                            if (!line.trim()) return false;
+                            if (lower.includes('deprecationwarning')) return false;
+                            if (lower.includes('datetime.datetime.utcnow')) return false;
+                            return true;
+                        })
+                        .join('\n')
+                        .trim();
+                };
+
+                const extractPythonJsonMessage = (rawOutput) => {
+                    if (!rawOutput) return '';
+                    const lines = rawOutput.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+                    for (let i = lines.length - 1; i >= 0; i -= 1) {
+                        const line = lines[i];
+                        if (!line.startsWith('{') || !line.endsWith('}')) continue;
+                        try {
+                            const parsed = JSON.parse(line);
+                            if (parsed && typeof parsed.message === 'string' && parsed.message.trim()) {
+                                return parsed.message.trim();
+                            }
+                        } catch {
+                            // Ignore non-JSON log lines.
+                        }
+                    }
+                    return '';
+                };
+
+                const isNonClassroomSignal = (rawOutput, rawError) => {
+                    const combined = `${rawOutput || ''}\n${rawError || ''}`.toLowerCase();
+                    return (
+                        combined.includes('không phải là lớp học')
+                        || combined.includes('khong phai la lop hoc')
+                        || combined.includes('not a classroom')
+                        || combined.includes('non_classroom')
+                    );
+                };
+
                 if (code === 0) {
                     try {
                         await Image.updateOne(
@@ -917,6 +962,7 @@ exports.analyzeImage = async (req, res) => {
                                 }
                             }
                         );
+                        
                     } catch (updateErr) {
                         console.error('Failed to update image status to done:', updateErr.message);
                     }
@@ -926,13 +972,23 @@ exports.analyzeImage = async (req, res) => {
                     console.error(`Last error: ${pythonError.slice(-500)}`);
 
                     try {
+                        const cleanError = sanitizePythonError(pythonError);
+                        const outputMessage = extractPythonJsonMessage(pythonOutput);
+                        const currentImage = await Image.findById(image_id).select('error_message');
+                        const existingMessage = (currentImage?.error_message || '').trim();
+                        const nonClassroomDetected = isNonClassroomSignal(pythonOutput, pythonError);
+                        const fallbackMessage = nonClassroomDetected || code === 1
+                            ? 'Ảnh không phải là lớp học. Vui lòng thử ảnh khác.'
+                            : `Image AI process failed with code ${code}`;
+                        const userFacingMessage = existingMessage || outputMessage || cleanError || fallbackMessage;
+
                         await Image.updateOne(
                             { _id: new ObjectId(image_id) },
                             {
                                 $set: {
                                     status: 'error',
                                     processed_at: new Date(),
-                                    error_message: pythonError.slice(-1000) || `Image AI process failed with code ${code}`,
+                                    error_message: userFacingMessage.slice(0, 1000),
                                     ai_pipeline_exit_code: code,
                                     ai_pipeline_finished_at: new Date()
                                 }
